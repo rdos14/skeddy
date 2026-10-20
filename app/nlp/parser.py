@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 
 from app.nlp import patterns as P
 from app.nlp.recurrence import Schedule, nth_weekday_cron
+from app.presentation import format_schedule
 
 
 @dataclass(slots=True)
@@ -52,16 +53,16 @@ def parse(text: str, *, now: datetime | None = None) -> ParsedReminder | None:
 
     hour, minute, period_used = _extract_time(low, spans)
 
-    schedule, summary = _extract_schedule(low, spans, now, hour, minute)
+    schedule, _summary = _extract_schedule(low, spans, now, hour, minute)
     if schedule is None:
         return None
 
     message = _clean_message(spans.remainder())
     if not message:
-        message = "Eslatma"
+        message = "Reminder"
 
     return ParsedReminder(
-        message=message, schedule=schedule, human_readable=summary
+        message=message, schedule=schedule, human_readable=format_schedule(schedule)
     )
 
 

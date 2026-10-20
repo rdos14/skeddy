@@ -8,6 +8,8 @@ from aiogram.types import CallbackQuery, Message
 from app.database.repository import ReminderRepository, UserRepository
 from app.keyboards.inline import ReminderCB, reminder_list
 from app.nlp import parse
+from app.nlp.recurrence import Schedule
+from app.presentation import format_schedule
 from app.services.scheduler import ReminderScheduler
 
 router = Router(name="reminders")
@@ -17,13 +19,15 @@ router = Router(name="reminders")
 async def cmd_list(message: Message, reminders: ReminderRepository) -> None:
     items = await reminders.list_active(message.chat.id)
     if not items:
-        await message.answer("Sizda faol eslatmalar yo‘q.")
+        await message.answer("You have no active reminders.")
         return
     lines = [
-        f"• <b>{r.message}</b>\n  🕒 {r.human_readable}" for r in items
+        f"• <b>{r.message}</b>\n"
+        f"  🕒 {format_schedule(Schedule.from_json(r.schedule_spec))}"
+        for r in items
     ]
     await message.answer(
-        "<b>Faol eslatmalar:</b>\n\n" + "\n\n".join(lines),
+        "<b>Active reminders:</b>\n\n" + "\n\n".join(lines),
         reply_markup=reminder_list(items),
     )
 
@@ -37,8 +41,8 @@ async def delete_reminder(
 ) -> None:
     await reminders.deactivate(callback_data.reminder_id)
     scheduler.cancel(callback_data.reminder_id)
-    await callback.answer("O‘chirildi ✅")
-    await callback.message.edit_text("🗑 Eslatma o‘chirildi.")
+    await callback.answer("Deleted ✅")
+    await callback.message.edit_text("🗑 Reminder deleted.")
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -52,10 +56,10 @@ async def create_reminder(
     parsed = parse(message.text)
     if parsed is None:
         await message.answer(
-            "🤔 Vaqtni tushunolmadim. Masalan:\n"
-            "• <i>ertaga soat 9 da uchrashuvni eslat</i>\n"
-            "• <i>har dushanba 10:00 da hisobot</i>\n\n"
-            "Batafsil: /help"
+            "🤔 I couldn't understand the time. Try:\n"
+            "• <i>tomorrow at 09:00 call the dentist</i>\n"
+            "• <i>every monday at 10:00 send the report</i>\n\n"
+            "More examples: /help"
         )
         return
 
@@ -72,12 +76,12 @@ async def create_reminder(
     scheduler.register(reminder, user.timezone)
 
     kind_label = (
-        "🔁 Takrorlanuvchi"
+        "🔁 Recurring"
         if parsed.schedule.is_recurring
-        else "1️⃣ Bir martalik"
+        else "1️⃣ One-time"
     )
     await message.answer(
-        f"✅ <b>Eslatma qo‘shildi!</b>\n\n"
+        f"✅ <b>Reminder added!</b>\n\n"
         f"📝 {parsed.message}\n"
         f"🕒 {parsed.human_readable}\n"
         f"{kind_label} · 🌍 {user.timezone}"

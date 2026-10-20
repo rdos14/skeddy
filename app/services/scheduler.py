@@ -81,7 +81,7 @@ class ReminderScheduler:
     async def _fire(self, reminder_id: int, user_id: int, message: str) -> None:
         try:
             await self._bot.send_message(
-                user_id, f"🔔 <b>Eslatma:</b> {message}"
+                user_id, f"🔔 <b>Reminder:</b> {message}"
             )
         except Exception:  # noqa: BLE001
             logger.exception("Failed to deliver reminder %s", reminder_id)

@@ -11,35 +11,34 @@ from app.services.scheduler import is_valid_timezone
 router = Router(name="start")
 
 WELCOME = (
-    "👋 Salom! Men <b>Skeddy</b> — tabiiy tilni tushunadigan eslatma botman.\n\n"
-    "Menga oddiy gap bilan yozing, men vaqtni o‘zim tushunaman:\n\n"
-    "• <i>Ertaga soat 9 da shifokorga qo‘ng‘iroq qilishni eslat</i>\n"
-    "• <i>Har kuni 22:00 da suv ichishni eslat</i>\n"
-    "• <i>Har dushanba soat 10 da hisobotni yubor</i>\n"
-    "• <i>Har oyning birinchi dushanbasida ertalab soat 9 da serverni tekshir</i>\n"
-    "• <i>30 daqiqadan keyin choynakni o‘chir</i>\n\n"
-    "📋 /list — eslatmalaringiz\n"
-    "🌍 /timezone Asia/Tashkent — vaqt mintaqasi\n"
-    "❓ /help — batafsil yordam"
+    "👋 Hello! I'm <b>Skeddy</b>, your reminder bot.\n\n"
+    "Tell me what to remind you about and when:\n\n"
+    "• <i>tomorrow at 09:00 call the dentist</i>\n"
+    "• <i>every day at 22:00 drink water</i>\n"
+    "• <i>every monday at 10:00 send the report</i>\n"
+    "• <i>in 30 min check the kettle</i>\n\n"
+    "📋 /list — active reminders\n"
+    "🌍 /timezone — view or change your timezone\n"
+    "❓ /help — examples and instructions"
 )
 
 HELP = (
-    "<b>Skeddy qanday ishlaydi</b>\n\n"
-    "Shunchaki nima va qachon eslatishimni yozing. Men o‘zbek va ingliz tilidagi "
-    "iboralarni tushunaman.\n\n"
-    "<b>Bir martalik</b>\n"
-    "• <code>ertaga 9:00 da ...</code>\n"
-    "• <code>bugun soat 18 da ...</code>\n"
-    "• <code>2 soatdan keyin ...</code>\n"
-    "• <code>27.09 soat 15:30 da ...</code>\n\n"
-    "<b>Takrorlanuvchi</b>\n"
-    "• <code>har kuni 08:00 da ...</code>\n"
-    "• <code>har dushanba 10:00 da ...</code>\n"
-    "• <code>har soatda ...</code>\n"
-    "• <code>har 15 daqiqada ...</code>\n"
-    "• <code>har oyning birinchi dushanbasida 9:00 da ...</code>\n\n"
-    "<b>Kun qismlari</b>: ertalab, tush, kechqurun, kechasi\n"
-    "<b>Vaqt mintaqasi</b>: <code>/timezone Asia/Tashkent</code>"
+    "<b>How Skeddy works</b>\n\n"
+    "Send a message describing what to remember and when. "
+    "The current parser understands English and Uzbek.\n\n"
+    "<b>One-time reminders</b>\n"
+    "• <code>tomorrow at 09:00 call the dentist</code>\n"
+    "• <code>today at 18:00 check the server</code>\n"
+    "• <code>in 30 min take a break</code>\n"
+    "• <code>27.09 at 15:30 pay the bill</code>\n\n"
+    "<b>Recurring reminders</b>\n"
+    "• <code>every day at 08:00 exercise</code>\n"
+    "• <code>every monday at 10:00 send the report</code>\n"
+    "• <code>every hour stretch</code>\n"
+    "• <code>every 15 min check the oven</code>\n\n"
+    "<b>Manage reminders</b>: /list, then use the delete button.\n"
+    "<b>Timezone</b>: <code>/timezone America/Mexico_City</code>\n"
+    "Voice messages and Spanish parsing are not available yet."
 )
 
 
@@ -67,15 +66,15 @@ async def cmd_timezone(
     if not tz:
         user = await users.get_or_create(message.chat.id, default_tz)
         await message.answer(
-            f"Joriy vaqt mintaqangiz: <code>{user.timezone}</code>\n"
-            "O‘zgartirish uchun: <code>/timezone Asia/Tashkent</code>"
+            f"Current timezone: <code>{user.timezone}</code>\n"
+            "To change it: <code>/timezone America/Mexico_City</code>"
         )
         return
     if not is_valid_timezone(tz):
         await message.answer(
-            "Noto‘g‘ri vaqt mintaqasi. Masalan: <code>Asia/Tashkent</code>."
+            "Invalid timezone. Example: <code>America/Mexico_City</code>."
         )
         return
     await users.get_or_create(message.chat.id, default_tz)
     await users.set_timezone(message.chat.id, tz)
-    await message.answer(f"✅ Vaqt mintaqasi <code>{tz}</code> ga o‘rnatildi.")
+    await message.answer(f"✅ Timezone set to <code>{tz}</code>.")

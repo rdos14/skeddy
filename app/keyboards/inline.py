@@ -17,13 +17,13 @@ def confirm_reminder(reminder_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="✅ Tasdiqlash",
+            text="✅ Confirm",
             callback_data=ReminderCB(
                 action="confirm", reminder_id=reminder_id
             ).pack(),
         ),
         InlineKeyboardButton(
-            text="🗑 Bekor qilish",
+            text="🗑 Cancel",
             callback_data=ReminderCB(
                 action="discard", reminder_id=reminder_id
             ).pack(),
@@ -35,7 +35,7 @@ def confirm_reminder(reminder_id: int) -> InlineKeyboardMarkup:
 def reminder_list(reminders: list[Reminder]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for reminder in reminders:
-        label = reminder.message[:30] or "Eslatma"
+        label = reminder.message[:30] or "Reminder"
         builder.row(
             InlineKeyboardButton(
                 text=f"🗑 {label}",
