@@ -136,9 +136,7 @@ def test_handler_keeps_draft_when_reply_contains_a_new_date(tmp_path, monkeypatc
                     pending,
                 )
                 assert (
-                    await session.scalar(
-                        select(func.count()).select_from(Reminder)
-                    )
+                    await session.scalar(select(func.count()).select_from(Reminder))
                     == 0
                 )
                 assert await pending.get(101, now=NOW) is not None
@@ -146,6 +144,7 @@ def test_handler_keeps_draft_when_reply_contains_a_new_date(tmp_path, monkeypatc
             await db.dispose()
 
     asyncio.run(run())
+
 
 def test_handler_routes_batch_away_from_existing_draft(tmp_path, monkeypatch):
     async def run():
@@ -196,15 +195,14 @@ def test_handler_routes_batch_away_from_existing_draft(tmp_path, monkeypatch):
                     select(PendingBatch).where(PendingBatch.user_id == 101)
                 )
                 assert (
-                    await session.scalar(
-                        select(func.count()).select_from(Reminder)
-                    )
+                    await session.scalar(select(func.count()).select_from(Reminder))
                     == 0
                 )
         finally:
             await db.dispose()
 
     asyncio.run(run())
+
 
 def test_batch_db_failure_rolls_back_rows_and_keeps_jobs_empty(tmp_path, monkeypatch):
     async def run():
@@ -248,9 +246,7 @@ def test_batch_db_failure_rolls_back_rows_and_keeps_jobs_empty(tmp_path, monkeyp
                         now=NOW,
                     )
                 assert (
-                    await session.scalar(
-                        select(func.count()).select_from(Reminder)
-                    )
+                    await session.scalar(select(func.count()).select_from(Reminder))
                     == 0
                 )
                 assert await session.scalar(
@@ -261,4 +257,3 @@ def test_batch_db_failure_rolls_back_rows_and_keeps_jobs_empty(tmp_path, monkeyp
             await db.dispose()
 
     asyncio.run(run())
-
