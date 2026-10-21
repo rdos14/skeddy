@@ -35,7 +35,10 @@ one transaction; incomplete and past lines are not silently scheduled.
 ## Pending drafts
 
 `PendingDraft` and `PendingDraftRepository` are owner-scoped SQLite state with
-an expiry time. `Database.create_all()` creates the additive table. A date-only
-message creates no reminder or scheduler job; the next clock reply combines
-with the persisted date. `/cancel` removes the draft. Existing reminder rows
-and serialized schedules are not rewritten.
+an expiry time. Drafts and batch previews use a bounded **24-hour TTL**; the
+handler removes expired state when it is read. `Database.create_all()` creates
+the additive tables. A date-only message creates no reminder or scheduler job;
+the next clock reply combines with the persisted date. A numbered batch is
+routed as a new preview even when a draft exists. `/cancel` removes both the
+draft and batch preview. Existing reminder rows and serialized schedules are
+not rewritten.

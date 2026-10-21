@@ -6,6 +6,8 @@ from app.nlp.dates import (
     analyze_datetime,
     combine_pending_date,
     has_datetime_intent,
+    has_recurrence_intent,
+    has_unsupported_clock,
 )
 from app.nlp.parser import ParsedReminder, parse
 from app.nlp.recurrence import Schedule
@@ -22,6 +24,8 @@ __all__ = [
     "analyze_datetime",
     "combine_pending_date",
     "has_datetime_intent",
+    "has_recurrence_intent",
+    "has_unsupported_clock",
     "is_batch_input",
     "parse",
 ]

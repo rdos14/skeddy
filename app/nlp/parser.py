@@ -12,11 +12,17 @@ into a :class:`ParsedReminder` carrying a clean message and a
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app.nlp import patterns as P
-from app.nlp.dates import analyze_datetime, has_datetime_intent
+from app.nlp.dates import (
+    analyze_datetime,
+    has_datetime_intent,
+    has_recurrence_intent,
+    has_unsupported_clock,
+)
 from app.nlp.recurrence import Schedule, nth_weekday_cron
 from app.nlp.spanish import has_spanish_timing, parse_spanish
 from app.presentation import format_schedule
@@ -51,7 +57,11 @@ class _Spans:
 def parse(text: str, *, now: datetime | None = None) -> ParsedReminder | None:
     now = now or datetime.now()
     original = text.strip()
-    if has_datetime_intent(original):
+    if has_unsupported_clock(original):
+        return None
+    # Recurrence grammar owns its weekday/time tokens.  Do not let the
+    # one-off date analyzer reinterpret a recurring request as a single run.
+    if has_datetime_intent(original) and not has_recurrence_intent(original):
         analysis = analyze_datetime(original, now=now)
         if not analysis.complete or analysis.due is None:
             return None
@@ -160,10 +170,15 @@ def _extract_schedule(
 
     # 2) "Nth <weekday> of every month" -> monthly cron
     m = P.NTH_WEEKDAY_RE.search(low)
-    if m and any(w in low for w in P.MONTHLY_WORDS + ("oy", "month")):
+    if m and (
+        any(w in low for w in P.MONTHLY_WORDS + ("oy", "month"))
+        or re.search(r"\b(?:every|each|har)\b", low)
+    ):
         spans.consume(m.start(), m.end())
         nth = P.ORDINALS[m.group("ord").lower()]
         for context in P.MONTHLY_CONTEXT_RE.finditer(low):
+            spans.consume(context.start(), context.end())
+        for context in re.finditer(r"\b(?:every|each|har)\b", low):
             spans.consume(context.start(), context.end())
         wd = P.WEEKDAYS[m.group("wd").lower()]
         cron = nth_weekday_cron(nth, P.CRON_DOW[wd], default_hour, default_minute)

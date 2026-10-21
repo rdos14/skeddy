@@ -109,6 +109,20 @@ async def create_reminder(
     pending_batches: PendingBatchRepository | None = None,
 ) -> None:
     now = datetime.now()
+    # A numbered paste is a new batch, not a clock reply for an older draft.
+    # Route it before pending-date completion while keeping both owner-scoped
+    # records available for an explicit /cancel.
+    if pending_batches is not None and is_batch_input(message.text):
+        batch = analyze_batch(message.text, now=now)
+        await pending_batches.upsert(
+            user_id=message.chat.id,
+            original_text=message.text,
+            items_json=serialize_batch(batch),
+            expires_at=now + timedelta(hours=24),
+        )
+        await message.answer(preview_text(batch))
+        return
+
     if pending is not None:
         draft = await pending.get(message.chat.id, now=now)
         if draft is not None:
@@ -143,40 +157,37 @@ async def create_reminder(
             )
             return
 
-    if pending_batches is not None and is_batch_input(message.text):
-        batch = analyze_batch(message.text, now=now)
-        await pending_batches.upsert(
-            user_id=message.chat.id,
-            original_text=message.text,
-            items_json=serialize_batch(batch),
-            expires_at=now + timedelta(hours=24),
-        )
-        await message.answer(preview_text(batch))
-        return
-
-    date_analysis = analyze_datetime(message.text, now=now)
-    if date_analysis.status == "missing_time" and date_analysis.target_date:
-        if pending is not None:
-            await pending.upsert(
-                user_id=message.chat.id,
-                original_text=message.text,
-                message=date_analysis.message,
-                target_date=date_analysis.target_date,
-                expires_at=now + timedelta(hours=24),
+    date_analysis = None
+    if has_datetime_intent(message.text):
+        date_analysis = analyze_datetime(message.text, now=now)
+        if date_analysis.status == "missing_time" and date_analysis.target_date:
+            if pending is not None:
+                await pending.upsert(
+                    user_id=message.chat.id,
+                    original_text=message.text,
+                    message=date_analysis.message,
+                    target_date=date_analysis.target_date,
+                    expires_at=now + timedelta(hours=24),
+                )
+            await message.answer(
+                f"I recognized {date_analysis.target_date:%d/%m/%Y}. "
+                "What clock should I use? Send <code>9:00 AM</code>, or /cancel."
             )
-        await message.answer(
-            f"I recognized {date_analysis.target_date:%d/%m/%Y}. "
-            "What clock should I use? Send <code>9:00 AM</code>, or /cancel."
-        )
-        return
-    parsed = parse(message.text)
+            return
+    # Keep legacy Spanish/Uzbek parser clock ownership intact; the bounded
+    # English/date path already used the frozen analysis above.
+    parsed = (
+        parse(message.text, now=now)
+        if date_analysis is not None
+        else parse(message.text)
+    )
     if parsed is None:
-        if has_datetime_intent(message.text) and date_analysis.status == "past":
+        if date_analysis is not None and date_analysis.status == "past":
             await message.answer(
                 "That English/Spanish date is in the past. No reminder was created."
             )
             return
-        if has_datetime_intent(message.text) and date_analysis.status == "invalid":
+        if date_analysis is not None and date_analysis.status == "invalid":
             await message.answer(
                 "I couldn't safely parse that English/Spanish date or clock. "
                 "No reminder was created."

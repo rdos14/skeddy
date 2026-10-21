@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
+from app.nlp import patterns as P
+
 _MONTHS = {
     name: number
     for number, name in enumerate(
@@ -59,9 +61,24 @@ _NUMERIC_LIKE = re.compile(
     r"(?<!\d-)(?<!\w)\d{1,2}[/-]\d{1,2}(?:[/-]\d+)?"
 )
 _CLOCK = re.compile(
-    r"(?<![\w:/-])(?:(?:at|a\s+las?)\s+)?"
+    r"(?<![\w:/.+-])(?:(?:at|a\s+las?)\s+)?"
     r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*"
-    r"(?P<ampm>[ap]\s*\.?\s*m\.?)?(?!\w|:\d|\.\d)",
+    r"(?P<ampm>[ap]\s*\.?\s*m\.?)?(?!\w|[:.]\d|\.)",
+    re.IGNORECASE,
+)
+_RECURRENCE = re.compile(
+    r"\b(?:every|each|har|daily|everyday|weekly|monthly|hourly|"
+    r"cada|diariamente|semanalmente|mensualmente|anualmente)\b",
+    re.IGNORECASE,
+)
+_BAD_CLOCK = re.compile(
+    r"(?:\b(?:at|a\s+las?)\s*[+-]?\d+(?:[.,]\d+)"
+    r"|(?<!\w)[+-]\d+(?:[.,]?\d*)\s*[ap]\s*\.?\s*m\.?"
+    r"|\b(?:at|a\s+las?)\s*\d{1,2}:\s*(?!\d))",
+    re.IGNORECASE,
+)
+_UNSUPPORTED_CLOCK_WORDS = re.compile(
+    r"\b(?:y|and)\s+(?:media|half|cuarto|quarter)\b|\bo['’]?clock\b",
     re.IGNORECASE,
 )
 
@@ -98,11 +115,9 @@ class DateAnalysis:
 
 
 def has_datetime_intent(text: str) -> bool:
-    for marker in _DATE_MARKER.finditer(text):
-        if marker.group("weekday") and re.search(
-            r"\b(?:every|each|har)\s+$", text[: marker.start()], re.I
-        ):
-            continue
+    if _RECURRENCE.search(text):
+        return False
+    for _marker in _DATE_MARKER.finditer(text):
         return True
     return bool(
         _YESTERDAY.search(text) or _AGO.search(text) or _NUMERIC_LIKE.search(text)
@@ -141,6 +156,33 @@ def _clock(
     return candidates[0] if candidates else None
 
 
+def has_recurrence_intent(text: str) -> bool:
+    """Return whether the text belongs to recurring, not one-off, grammar."""
+    return bool(_RECURRENCE.search(text))
+
+
+def has_unsupported_clock(text: str) -> bool:
+    """Return whether a bounded parser would only consume part of a clock."""
+    return bool(_BAD_CLOCK.search(text) or _UNSUPPORTED_CLOCK_WORDS.search(text))
+
+
+def _has_temporal_residue(text: str, spans: list[tuple[int, int]]) -> bool:
+    chars = list(text)
+    for start, end in spans:
+        chars[start:end] = " " * (end - start)
+    remainder = "".join(chars)
+    return bool(
+        P.UNCONSUMED_TEMPORAL_RE.search(remainder)
+        or _UNSUPPORTED_CLOCK_WORDS.search(remainder)
+    )
+
+
+def _invalid_analysis(
+    text: str, spans: list[tuple[int, int]], reason: str
+) -> DateAnalysis:
+    return _analysis("invalid", text=text, spans=spans, reason=reason)
+
+
 def _target_from_weekday(
     marker: re.Match[str], now: datetime, has_clock: bool, clock: time | None
 ) -> date:
@@ -167,11 +209,22 @@ def _mask_message(text: str, spans: list[tuple[int, int]]) -> str:
     chars = list(text)
     for start, end in spans:
         chars[start:end] = " " * (end - start)
-    remainder = "".join(chars).replace("📋", " ")
+    remainder = "".join(chars)
+    # Only remove the HTML-history wrapper, never punctuation belonging to the
+    # user's payload (for example ``(QA, alpha)``).
+    remainder = re.sub(r"\(\s*📋\s*\)", " ", remainder)
+    remainder = remainder.replace("📋", " ")
     remainder = re.sub(r"\b(?:at|on)\s*$", "", remainder, flags=re.IGNORECASE)
-    remainder = re.sub(r"[(),]", " ", remainder)
+    remainder = re.sub(
+        r"^(?:\s*(?:remind\s+me(?:\s+to)?|recu[eé]rdame|recordarme|"
+        r"recordatorio(?:\s+(?:de|que))?|contenido\s+del\s+recordatorio)"
+        r"[\s:,.—-]*)+",
+        "",
+        remainder,
+        flags=re.IGNORECASE,
+    )
     words = remainder.split()
-    message = " ".join(words).strip(" .,:;—-()")
+    message = " ".join(words).strip(" .,:;—-")
     return message[:1].upper() + message[1:] if message else "Reminder"
 
 
@@ -207,6 +260,8 @@ def _analysis(
 def analyze_datetime(text: str, *, now: datetime | None = None) -> DateAnalysis:
     """Analyze bounded English/slash date intent without creating a reminder."""
     now = now or datetime.now()
+    if has_recurrence_intent(text):
+        return _invalid_analysis(text, [], "recurring input is not a one-off date")
     markers = list(_DATE_MARKER.finditer(text))
     yesterday = list(_YESTERDAY.finditer(text))
     ago = list(_AGO.finditer(text))
@@ -240,6 +295,11 @@ def analyze_datetime(text: str, *, now: datetime | None = None) -> DateAnalysis:
         elif marker.group("slash"):
             parts = [int(part) for part in re.split(r"[/-]", marker.group("slash"))]
             date_parts = re.split(r"[/-]", marker.group("slash"))
+            separators = re.findall(r"[/-]", marker.group("slash"))
+            if len(set(separators)) > 1:
+                return _invalid_analysis(
+                    text, date_spans, "mixed numeric date separators"
+                )
             day, month = parts[:2]
             year = parts[2] if len(parts) == 3 else now.year
             if len(date_parts) == 3 and len(date_parts[2]) == 2:
@@ -303,10 +363,17 @@ def analyze_datetime(text: str, *, now: datetime | None = None) -> DateAnalysis:
             reason="conflicting date expressions",
         )
 
+    if _BAD_CLOCK.search(text) or _UNSUPPORTED_CLOCK_WORDS.search(text):
+        return _invalid_analysis(text, date_spans, "unsupported or malformed clock")
     clock_result = _clock(text, date_spans)
     if clock_result is False:
-        return _analysis(
-            "invalid", text=text, spans=date_spans, reason="invalid or repeated clock"
+        return _invalid_analysis(text, date_spans, "invalid or repeated clock")
+    all_spans = list(date_spans)
+    if isinstance(clock_result, tuple):
+        all_spans.append(clock_result[1])
+    if _has_temporal_residue(text, all_spans):
+        return _invalid_analysis(
+            text, date_spans, "unsupported or conflicting temporal text"
         )
     if relative_due is not None and clock_result is not None:
         return _analysis(
@@ -402,10 +469,15 @@ def combine_pending_date(
     target_date: date, clock_text: str, *, now: datetime
 ) -> DateAnalysis:
     """Apply only a newly supplied clock to a previously frozen calendar date."""
+    if _BAD_CLOCK.search(clock_text) or _UNSUPPORTED_CLOCK_WORDS.search(clock_text):
+        return DateAnalysis(status="invalid", reason="one explicit clock is required")
     result = _clock(clock_text, [])
     if not isinstance(result, tuple):
         return DateAnalysis(status="invalid", reason="one explicit clock is required")
     clock, span = result
+    remainder = clock_text[: span[0]] + clock_text[span[1] :]
+    if remainder.strip():
+        return DateAnalysis(status="invalid", reason="clock reply contains extra text")
     due = datetime.combine(target_date, clock)
     status = "past" if due <= now else "complete"
     return DateAnalysis(

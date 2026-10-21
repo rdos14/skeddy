@@ -62,25 +62,36 @@ async def confirm_batch(
     batch = await pending_batches.get(user_id, now=now)
     if batch is None:
         return []
-    items = json.loads(batch.items_json)
-    user = await users.get_or_create(user_id, default_tz)
+    session = getattr(reminders, "_session", None)
     created = []
-    for item in items:
-        if item.get("status") != "complete" or not item.get("due"):
-            continue
-        due = datetime.fromisoformat(item["due"])
-        if due <= now:
-            continue
-        schedule = Schedule(kind="once", run_date=due)
-        reminder = await reminders.create(
-            user_id=user_id,
-            message=item["message"],
-            original_text=item["original_text"],
-            human_readable=format_schedule(schedule),
-            schedule=schedule,
-        )
-        created.append(reminder)
-    await pending_batches.delete(user_id)
-    for reminder in created:
-        scheduler.register(reminder, user.timezone)
+    registered = []
+    try:
+        items = json.loads(batch.items_json)
+        user = await users.get_or_create(user_id, default_tz)
+        for item in items:
+            if item.get("status") != "complete" or not item.get("due"):
+                continue
+            due = datetime.fromisoformat(item["due"])
+            if due <= now:
+                continue
+            schedule = Schedule(kind="once", run_date=due)
+            reminder = await reminders.create(
+                user_id=user_id,
+                message=item["message"],
+                original_text=item["original_text"],
+                human_readable=format_schedule(schedule),
+                schedule=schedule,
+            )
+            created.append(reminder)
+        await pending_batches.delete(user_id)
+        # Register only after every row has been flushed successfully.
+        for reminder in created:
+            registered.append(reminder)
+            scheduler.register(reminder, user.timezone)
+    except Exception:
+        if session is not None:
+            await session.rollback()
+        for reminder in registered:
+            scheduler.cancel(reminder.id)
+        raise
     return created
