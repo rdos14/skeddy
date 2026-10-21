@@ -10,6 +10,7 @@ from aiogram.types import TelegramObject
 
 from app.database.base import Database
 from app.database.repository import (
+    ItemRepository,
     PendingBatchRepository,
     PendingDraftRepository,
     ReminderRepository,
@@ -32,6 +33,7 @@ class DatabaseMiddleware(BaseMiddleware):
             data["session"] = session
             data["users"] = UserRepository(session)
             data["reminders"] = ReminderRepository(session)
+            data["items"] = ItemRepository(session)
             data["pending"] = PendingDraftRepository(session)
             data["pending_batches"] = PendingBatchRepository(session)
             data["default_tz"] = self._default_tz

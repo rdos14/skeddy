@@ -1,19 +1,18 @@
-"""Schedules reminders with APScheduler and delivers notifications.
+"""Schedules primary and additional item alarms with defensive DB checks."""
 
-Reminders are persisted, so on startup every active reminder is reloaded
-and re-registered — nothing is lost across restarts.
-"""
 from __future__ import annotations
 
+import html
 import logging
+from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.database.base import Database
-from app.database.models import Reminder
-from app.database.repository import ReminderRepository, UserRepository
+from app.database.models import AdditionalEvent, Reminder
+from app.database.repository import ItemRepository, ReminderRepository, UserRepository
 from app.nlp.recurrence import Schedule
 
 logger = logging.getLogger(__name__)
@@ -46,25 +45,42 @@ class ReminderScheduler:
         async with self._db.session() as session:
             reminders = await ReminderRepository(session).all_active()
             users = UserRepository(session)
+            active_count = 0
+            extra_count = 0
             for reminder in reminders:
-                user = await users.get_or_create(
-                    reminder.user_id, self._default_tz
+                state = await ItemRepository(session).get_item_state(
+                    reminder.user_id, reminder.id
                 )
-                self._register(reminder, user.timezone)
-        logger.info("Reloaded %d active reminders", len(reminders))
+                if state and state.status in {"completed", "deleted"}:
+                    continue
+                if state and state.kind == "note":
+                    continue
+                user = await users.get_or_create(reminder.user_id, self._default_tz)
+                if self.register(reminder, user.timezone):
+                    active_count += 1
+                events = await ItemRepository(session).extra_events(
+                    reminder.user_id, reminder.id
+                )
+                self.register_extras(reminder, events, user.timezone)
+                extra_count += len(events)
+        logger.info(
+            "Reloaded %d primary and %d additional alarms", active_count, extra_count
+        )
 
-    def register(self, reminder: Reminder, timezone: str) -> None:
-        """Public entry point used by handlers for freshly created reminders."""
-        self._register(reminder, timezone)
+    def register(self, reminder: Reminder, timezone: str):
+        """Register a primary alarm; inactive/note rows are never scheduled."""
+        if not reminder.active:
+            return None
+        return self._register(reminder, timezone)
 
-    def _register(self, reminder: Reminder, timezone: str) -> None:
+    def _register(self, reminder: Reminder, timezone: str):
         schedule = Schedule.from_json(reminder.schedule_spec)
         try:
             trigger = schedule.to_trigger(timezone)
         except Exception:  # noqa: BLE001
             logger.exception("Bad trigger for reminder %s", reminder.id)
-            return
-        self._scheduler.add_job(
+            return None
+        return self._scheduler.add_job(
             self._fire,
             trigger=trigger,
             id=f"rem:{reminder.id}",
@@ -73,24 +89,123 @@ class ReminderScheduler:
             misfire_grace_time=300,
         )
 
+    def register_extras(
+        self, reminder: Reminder, events: list[AdditionalEvent], timezone: str
+    ) -> None:
+        """Register durable extra events under the separate ``extra:`` namespace."""
+        if not reminder.active:
+            return
+        for event in events:
+            if not event.active:
+                continue
+            try:
+                self._scheduler.add_job(
+                    self._fire_extra,
+                    trigger="date",
+                    run_date=event.due_at,
+                    timezone=timezone,
+                    id=f"extra:{event.id}",
+                    args=[event.id, reminder.id, reminder.user_id, reminder.message],
+                    replace_existing=True,
+                    misfire_grace_time=300,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Bad extra trigger for event %s", event.id)
+
+    register_extra_events = register_extras
+
     def cancel(self, reminder_id: int) -> None:
         job = self._scheduler.get_job(f"rem:{reminder_id}")
         if job:
             job.remove()
 
+    def cancel_all(self, reminder_id: int) -> None:
+        self.cancel(reminder_id)
+        for job in self._scheduler.get_jobs():
+            if job.id.startswith("extra:") and job.args[1] == reminder_id:
+                job.remove()
+
+    async def _current(self, user_id: int, reminder_id: int):
+        async with self._db.session() as session:
+            reminder = await ItemRepository(session)._owned(user_id, reminder_id)
+            if reminder is None:
+                return None
+            state = await ItemRepository(session).get_item_state(user_id, reminder_id)
+            return reminder, state
+
     async def _fire(self, reminder_id: int, user_id: int, message: str) -> None:
+        current = await self._current(user_id, reminder_id)
+        if current is None:
+            self.cancel(reminder_id)
+            return
+        reminder, state = current
+        if (
+            not reminder.active
+            or (state and state.status in {"completed", "deleted"})
+            or (state and state.kind == "note")
+        ):
+            self.cancel(reminder_id)
+            return
         try:
             await self._bot.send_message(
-                user_id, f"🔔 <b>Reminder:</b> {message}"
+                user_id, f"🔔 <b>Reminder:</b> {html.escape(reminder.message)}"
             )
         except Exception:  # noqa: BLE001
             logger.exception("Failed to deliver reminder %s", reminder_id)
+        finally:
+            self.cancel(reminder_id)
 
-        # One-off reminders are retired after firing.
         async with self._db.session() as session:
             repo = ReminderRepository(session)
-            reminder = await repo.get(reminder_id)
-            if reminder and reminder.schedule_kind == "once":
-                await repo.deactivate(reminder_id)
-                await session.commit()
-                self.cancel(reminder_id)
+            current = await repo.get(reminder_id)
+            current_state = await ItemRepository(session).get_item_state(
+                user_id, reminder_id
+            )
+            if current and current.schedule_kind == "once":
+                # Tasks remain pending after delivery; reminders retire naturally.
+                if not current_state or current_state.kind == "reminder":
+                    await repo.deactivate(reminder_id)
+                    await session.commit()
+
+    async def _fire_extra(
+        self, event_id: int, reminder_id: int, user_id: int, message: str
+    ) -> None:
+        async with self._db.session() as session:
+            event = await session.get(AdditionalEvent, event_id)
+            reminder = await ItemRepository(session)._owned(user_id, reminder_id)
+            state = await ItemRepository(session).get_item_state(user_id, reminder_id)
+            if (
+                event is None
+                or reminder is None
+                or event.reminder_id != reminder_id
+                or event.user_id != user_id
+                or not event.active
+                or not reminder.active
+                or (state and state.status in {"completed", "deleted"})
+                or (state and state.kind == "note")
+            ):
+                self._remove_extra_job(event_id)
+                return
+            try:
+                await self._bot.send_message(
+                    user_id, f"🔔 <b>Reminder:</b> {html.escape(reminder.message)}"
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to deliver extra event %s", event_id)
+            event.active = False
+            event.fired_at = datetime.utcnow()
+            await session.commit()
+            self._remove_extra_job(event_id)
+
+            if state is None or state.kind == "reminder":
+                remaining = await ItemRepository(session).extra_events(
+                    user_id, reminder_id
+                )
+                if not remaining and not self._scheduler.get_job(f"rem:{reminder_id}"):
+                    reminder.active = False
+                    await session.commit()
+
+    def _remove_extra_job(self, event_id: int) -> None:
+        job = self._scheduler.get_job(f"extra:{event_id}")
+        if job:
+            job.remove()

@@ -1,4 +1,4 @@
 from app.database.base import Base, Database
-from app.database.repository import ReminderRepository, UserRepository
+from app.database.repository import ItemRepository, ReminderRepository, UserRepository
 
-__all__ = ["Base", "Database", "ReminderRepository", "UserRepository"]
+__all__ = ["Base", "Database", "ItemRepository", "ReminderRepository", "UserRepository"]
