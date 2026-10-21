@@ -119,8 +119,8 @@
         "✅Reminder added for tomorrow 08:30 AM",
         "What should I remind you about?"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -139,8 +139,8 @@
       "reference_ack": [
         "✅Reminder added August 29th, 2026 at 9:00 AM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -159,8 +159,8 @@
       "reference_ack": [
         "✅Reminder added Friday at 8:00 AM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -201,8 +201,8 @@
       "reference_ack": [
         "✅Reminder added in 11 hours"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -286,8 +286,8 @@
       "reference_ack": [
         "✅Reminder added Saturday at 3:00 PM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -306,8 +306,8 @@
       "reference_ack": [
         "✅Reminder added Friday at 9:00 AM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -348,8 +348,8 @@
       "reference_ack": [
         "✅Reminder added October 5th, 2026 at 5:00 PM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -369,8 +369,8 @@
         "✅Reminder added tomorrow at 10:00 AM"
       ],
       "oracle_note": "Reference bot contradicts the requested weekday; expected_due follows explicit user intent, not that bot.",
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass",
       "reference_due": "2026-09-30T10:00:00",
       "requested_weekday": 4
@@ -392,8 +392,8 @@
         "✅Reminder added tomorrow at 9:00 AM"
       ],
       "oracle_note": "Reference bot contradicts the requested weekday; expected_due follows explicit user intent, not that bot.",
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass",
       "reference_due": "2026-10-05T09:00:00",
       "requested_weekday": 6
@@ -454,8 +454,8 @@
       "reference_ack": [
         "✅Task added Saturday at 9:00 AM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -494,8 +494,8 @@
       "reference_ack": [
         "✅Task added tomorrow at 5:00 PM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -514,8 +514,8 @@
       "reference_ack": [
         "✅Task added Wednesday at 9:00 AM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -534,8 +534,8 @@
       "reference_ack": [
         "✅Task added tomorrow at 10:00 AM"
       ],
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {
@@ -553,8 +553,8 @@
       ],
       "reference_ack": [],
       "derived_from": "history_26",
-      "gap_reason": "safe_rejection_feature_missing",
-      "baseline_compatibility": "gap",
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
       "baseline_safety": "pass"
     },
     {

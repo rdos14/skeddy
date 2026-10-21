@@ -1,5 +1,9 @@
 # Skeddy history-derived parser contracts
 
+Current Spanish support is described in [SPANISH_PARSER.md](../../SPANISH_PARSER.md).
+Measured point-1 snapshots below are retained as historical evidence; current
+compatibility metadata reflects the separately tested point-2 implementation.
+
 ## Provenance and privacy
 
 These are **anonymized/adapted temporal patterns**, not a public copy of a chat.

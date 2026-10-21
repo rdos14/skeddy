@@ -17,7 +17,6 @@ from app.nlp import parse
         "la semana que viene a las 10am revisar equipo",
         "el próximo mes a las 10am revisar equipo",
         "dentro de un año a las 10am revisar equipo",
-        "el 21 de octubre a las 10am revisar equipo",
     ],
 )
 def test_unsupported_spanish_timing_is_not_replaced_by_a_clock(text, now):

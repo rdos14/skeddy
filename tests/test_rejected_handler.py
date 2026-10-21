@@ -21,7 +21,6 @@ from app.services.scheduler import ReminderScheduler
         "next friday at 8am test",
         "in two minutes today test",
         "in 1 second today test",
-        "mañana a las 10am revisar equipo",
     ],
 )
 def test_rejected_request_never_creates_or_schedules_a_reminder(tmp_path, text):

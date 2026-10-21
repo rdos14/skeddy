@@ -1,4 +1,5 @@
 """/start, /help and /timezone."""
+
 from __future__ import annotations
 
 from aiogram import Router
@@ -25,7 +26,7 @@ WELCOME = (
 HELP = (
     "<b>How Skeddy works</b>\n\n"
     "Send a message describing what to remember and when. "
-    "The current parser understands English and Uzbek.\n\n"
+    "The parser supports English, Uzbek and bounded Spanish dates.\n\n"
     "<b>One-time reminders</b>\n"
     "• <code>tomorrow at 09:00 call the dentist</code>\n"
     "• <code>today at 18:00 check the server</code>\n"
@@ -39,16 +40,19 @@ HELP = (
     "<b>Manage reminders</b>: /list, then use the delete button.\n"
     "<b>Timezone</b>: <code>/timezone America/Mexico_City</code>\n"
     "For durations, use digits or 'one' (for example, in one minute).\n"
-    "One-off 'next weekday' phrases are not supported yet. "
-    "Use an explicit date and time instead.\n"
-    "Voice messages and Spanish parsing are not available yet."
+    "<b>Spanish: date + explicit time required</b>\n"
+    "• <code>mañana a las 10am revisar equipo</code>\n"
+    "• <code>próximo sábado a las 830am revisar equipo</code>\n"
+    "• <code>30 de julio a las 9:00 a. m. revisar equipo</code>\n"
+    "'próximo' excludes today; 'este' means the current week. "
+    "Past 'hoy/este' times are rejected. No default hour is chosen.\n"
+    "English one-off 'next weekday', Spanish recurrence/fractional phrases, "
+    "and voice messages are not supported yet."
 )
 
 
 @router.message(Command("start"))
-async def cmd_start(
-    message: Message, users: UserRepository, default_tz: str
-) -> None:
+async def cmd_start(message: Message, users: UserRepository, default_tz: str) -> None:
     await users.get_or_create(message.chat.id, default_tz)
     await message.answer(WELCOME)
 

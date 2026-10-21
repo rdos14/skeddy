@@ -132,3 +132,14 @@ def test_schedule_presentation_is_english_without_changing_schedule():
     empty = parse("in 1 min", now=now)
     assert empty is not None
     assert empty.message == "Reminder"
+
+
+def test_help_describes_supported_spanish_and_explicit_time_requirement():
+    message = SimpleNamespace(answer=AsyncMock())
+    asyncio.run(cmd_help(message))
+    help_text = message.answer.call_args.args[0]
+    assert "mañana a las 10am" in help_text
+    assert "próximo sábado" in help_text
+    assert "explicit time" in help_text
+    assert "Spanish parsing are not available" not in help_text
+    assert len(help_text) <= 4096

@@ -1,4 +1,4 @@
-"""Natural-language reminder parser (Uzbek + English).
+"""Natural-language reminder parser (Uzbek + English, bounded Spanish).
 
 Turns free-form text such as::
 
@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 
 from app.nlp import patterns as P
 from app.nlp.recurrence import Schedule, nth_weekday_cron
+from app.nlp.spanish import has_spanish_timing, parse_spanish
 from app.presentation import format_schedule
 
 
@@ -49,6 +50,16 @@ class _Spans:
 def parse(text: str, *, now: datetime | None = None) -> ParsedReminder | None:
     now = now or datetime.now()
     original = text.strip()
+    if has_spanish_timing(original):
+        try:
+            result = parse_spanish(original, now)
+        except (ValueError, OverflowError):
+            return None
+        if result is None:
+            return None
+        message, due = result
+        schedule = Schedule(kind="once", run_date=due)
+        return ParsedReminder(message, schedule, format_schedule(schedule))
     low = original.lower()
     spans = _Spans(original)
 
