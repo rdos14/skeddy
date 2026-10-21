@@ -1,0 +1,604 @@
+{
+  "schema_version": 1,
+  "description": "Anonymized temporal patterns derived from a user-supplied Telegram export. payload_alpha replaces all personal task content. Derived cases are explicitly labeled. No raw export, Telegram IDs, access links or private source mapping is published.",
+  "source_case_count": 26,
+  "derived_case_count": 3,
+  "case_count": 29,
+  "cases": [
+    {
+      "id": "history_01",
+      "category": "relative_minutes",
+      "input": "remind me in 5 minutes to payload_alpha",
+      "now": "2026-07-25T16:16:49",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-07-25T16:21:49",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "in 5 minutes"
+      ],
+      "reference_ack": [
+        "✅Reminder added for today 04:21:49 PM",
+        "What should I remind you about?"
+      ],
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_02",
+      "category": "relative_trailing_today",
+      "input": "remind me to payload_alpha in 20 min today",
+      "now": "2026-07-25T16:38:21",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-07-25T16:58:21",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "in 20 min",
+        "today"
+      ],
+      "reference_ack": [
+        "✅Reminder added for today 04:58:21 PM",
+        "What should I remind you about?"
+      ],
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_03",
+      "category": "no_time_note",
+      "input": "to payload_alpha",
+      "now": "2026-07-25T16:38:45",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "no_time",
+      "expected_due": null,
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [],
+      "reference_ack": [
+        "Enter reminder time, or just click \"📝Save as note\"."
+      ],
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_04",
+      "category": "stateful_clock",
+      "input": "18:00",
+      "now": "2026-07-25T16:39:17",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "context",
+      "expected_due": "2026-07-25T18:00:00",
+      "payload": null,
+      "forbidden_title_fragments": [],
+      "reference_ack": [
+        "✅Reminder added for today 06:00 PM",
+        "What should I remind you about?"
+      ],
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_05",
+      "category": "fractional_duration",
+      "input": "Remind to payload_alpha in half a hour",
+      "now": "2026-07-26T22:05:55",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-07-26T22:35:55",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "in half a hour"
+      ],
+      "reference_ack": [
+        "✅Reminder added for today 10:35:55 PM",
+        "What should I remind you about?"
+      ],
+      "gap_reason": "safe_rejection_feature_missing",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_06",
+      "category": "spanish_calendar_compact_clock",
+      "input": "payload_alpha, para el jueves 30 de julio a las 830am",
+      "now": "2026-07-29T14:49:11",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-07-30T08:30:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "jueves",
+        "30 de julio",
+        "830am"
+      ],
+      "reference_ack": [
+        "✅Reminder added for tomorrow 08:30 AM",
+        "What should I remind you about?"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_07",
+      "category": "spanish_next_weekday",
+      "input": "payload_alpha, para el proximo sabado a las 9am",
+      "now": "2026-08-23T09:22:59",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-08-29T09:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "proximo sabado",
+        "9am"
+      ],
+      "reference_ack": [
+        "✅Reminder added August 29th, 2026 at 9:00 AM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_08",
+      "category": "spanish_weekday_payload_prefix",
+      "input": "recordatorio para el viernes a las 8am, contenido del recordatorio: payload_alpha",
+      "now": "2026-08-23T22:04:25",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-08-28T08:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "viernes",
+        "8am"
+      ],
+      "reference_ack": [
+        "✅Reminder added Friday at 8:00 AM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_09",
+      "category": "spanish_weekday_without_clock",
+      "input": "para el proximo sabado payload_alpha",
+      "now": "2026-08-23T23:06:22",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "policy",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "proximo sabado"
+      ],
+      "reference_ack": [
+        "✅Reminder added August 29th, 2026 at 12:00 PM"
+      ],
+      "oracle_note": "No explicit hour: observed reference noon is not an agreed Toddy default; current safe behavior is rejection.",
+      "expected_date": "2026-08-29",
+      "observed_reference_due": "2026-08-29T12:00:00",
+      "expected_due": null,
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_10",
+      "category": "spanish_today_versioned_payload",
+      "input": "payload_alpha para hoy a las 8pm version: model-1.7-hybrid",
+      "now": "2026-08-24T09:45:33",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-08-24T20:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "hoy",
+        "8pm"
+      ],
+      "reference_ack": [
+        "✅Reminder added in 11 hours"
+      ],
+      "gap_reason": "safe_rejection_feature_missing",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_11",
+      "category": "english_tomorrow",
+      "input": "remind tomorrow at 6am to payload_alpha",
+      "now": "2026-09-01T21:46:08",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-09-02T06:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "tomorrow",
+        "6am"
+      ],
+      "reference_ack": [
+        "✅Reminder added tomorrow at 6:00 AM"
+      ],
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_12",
+      "category": "spanish_next_week_without_clock",
+      "input": "payload_alpha el jueves de la semana q viene",
+      "now": "2026-09-03T18:24:06",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "policy",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "jueves",
+        "semana q viene"
+      ],
+      "reference_ack": [
+        "✅Reminder added September 10th, 2026 at 12:00 PM"
+      ],
+      "oracle_note": "No explicit hour: observed reference noon is not an agreed Toddy default; current safe behavior is rejection.",
+      "expected_date": "2026-09-10",
+      "observed_reference_due": "2026-09-10T12:00:00",
+      "expected_due": null,
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_13",
+      "category": "spanish_trailing_weekday_without_clock",
+      "input": "payload_alpha, para el sabado proximo",
+      "now": "2026-09-21T18:12:33",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "policy",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "sabado proximo"
+      ],
+      "reference_ack": [
+        "✅Reminder added Saturday at 12:00 PM"
+      ],
+      "oracle_note": "No explicit hour: observed reference noon is not an agreed Toddy default; current safe behavior is rejection.",
+      "expected_date": "2026-09-26",
+      "observed_reference_due": "2026-09-26T12:00:00",
+      "expected_due": null,
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_14",
+      "category": "spanish_weekday_pm",
+      "input": "payload_alpha para el sabado a las 3pm",
+      "now": "2026-09-23T12:43:41",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-09-26T15:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "sabado",
+        "3pm"
+      ],
+      "reference_ack": [
+        "✅Reminder added Saturday at 3:00 PM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_15",
+      "category": "spanish_weekday_am",
+      "input": "payload_alpha para el viernes a las 9am",
+      "now": "2026-09-23T13:24:03",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-09-25T09:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "viernes",
+        "9am"
+      ],
+      "reference_ack": [
+        "✅Reminder added Friday at 9:00 AM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_16",
+      "category": "spanish_leading_weekday_without_clock",
+      "input": "recuerdame para el proximo sabado, payload_alpha",
+      "now": "2026-09-28T07:06:29",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "policy",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "proximo sabado"
+      ],
+      "reference_ack": [
+        "✅Reminder added October 3rd, 2026 at 12:00 PM"
+      ],
+      "oracle_note": "No explicit hour: observed reference noon is not an agreed Toddy default; current safe behavior is rejection.",
+      "expected_date": "2026-10-03",
+      "observed_reference_due": "2026-10-03T12:00:00",
+      "expected_due": null,
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_17",
+      "category": "spanish_this_next_weekday",
+      "input": "payload_alpha para este lunes proximo a las 5pm",
+      "now": "2026-09-29T14:08:23",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-10-05T17:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "lunes proximo",
+        "5pm"
+      ],
+      "reference_ack": [
+        "✅Reminder added October 5th, 2026 at 5:00 PM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_18",
+      "category": "conflicting_reference_friday",
+      "input": "payload_alpha este viernes a las 10am",
+      "now": "2026-09-29T14:30:31",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "conflict",
+      "expected_due": "2026-10-02T10:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "viernes",
+        "10am"
+      ],
+      "reference_ack": [
+        "✅Reminder added tomorrow at 10:00 AM"
+      ],
+      "oracle_note": "Reference bot contradicts the requested weekday; expected_due follows explicit user intent, not that bot.",
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap",
+      "reference_due": "2026-09-30T10:00:00",
+      "requested_weekday": 4
+    },
+    {
+      "id": "history_19",
+      "category": "conflicting_reference_sunday",
+      "input": "recuerdame de payload_alpha para el proximo domingo, a las 9am",
+      "now": "2026-10-04T09:04:47",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "conflict",
+      "expected_due": "2026-10-11T09:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "proximo domingo",
+        "9am"
+      ],
+      "reference_ack": [
+        "✅Reminder added tomorrow at 9:00 AM"
+      ],
+      "oracle_note": "Reference bot contradicts the requested weekday; expected_due follows explicit user intent, not that bot.",
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap",
+      "reference_due": "2026-10-05T09:00:00",
+      "requested_weekday": 6
+    },
+    {
+      "id": "history_20",
+      "category": "task_without_time",
+      "input": "todo payload_alpha",
+      "now": "2026-10-13T17:56:33",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "no_time",
+      "expected_due": null,
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [],
+      "reference_ack": [
+        "No time set."
+      ],
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_21",
+      "category": "task_next_saturday_without_clock",
+      "input": "todo payload_alpha recuerdame para el proximo sabado",
+      "now": "2026-10-17T13:54:52",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "policy",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "proximo sabado"
+      ],
+      "reference_ack": [
+        "✅Task added October 24th, 2026 at 12:00 PM"
+      ],
+      "oracle_note": "No explicit hour: observed reference noon is not an agreed Toddy default; current safe behavior is rejection.",
+      "expected_date": "2026-10-24",
+      "observed_reference_due": "2026-10-24T12:00:00",
+      "expected_due": null,
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_22",
+      "category": "spanish_accented_dictation",
+      "input": "Recordatorio para el próximo sábado a las 9:00 a. m.: payload_alpha.",
+      "now": "2026-10-19T15:32:55",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-10-24T09:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "próximo sábado",
+        "9:00",
+        "a. m."
+      ],
+      "reference_ack": [
+        "✅Task added Saturday at 9:00 AM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_23",
+      "category": "spanish_spelled_date_without_clock",
+      "input": "Para el veintiuno de octubre, recuérdame de payload_alpha.",
+      "now": "2026-10-19T18:12:20",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "policy",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "veintiuno de octubre"
+      ],
+      "reference_ack": [],
+      "oracle_note": "No explicit hour: observed reference noon is not an agreed Toddy default; current safe behavior is rejection.",
+      "expected_date": "2026-10-21",
+      "observed_reference_due": "2026-10-21T12:00:00",
+      "expected_due": null,
+      "gap_reason": "none",
+      "baseline_compatibility": "pass",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "history_24",
+      "category": "spanish_leading_weekday_pm",
+      "input": "para martes a las 5pm, payload_alpha",
+      "now": "2026-10-19T18:27:22",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-10-20T17:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "martes",
+        "5pm"
+      ],
+      "reference_ack": [
+        "✅Task added tomorrow at 5:00 PM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_25",
+      "category": "spanish_weekday_unaccented",
+      "input": "payload_alpha para el miercoles a las 9am",
+      "now": "2026-10-19T18:47:38",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-10-21T09:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "miercoles",
+        "9am"
+      ],
+      "reference_ack": [
+        "✅Task added Wednesday at 9:00 AM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "history_26",
+      "category": "spanish_tomorrow",
+      "input": "payload_alpha mañana a las 10am",
+      "now": "2026-10-19T19:41:14",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-10-20T10:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "mañana",
+        "10am"
+      ],
+      "reference_ack": [
+        "✅Task added tomorrow at 10:00 AM"
+      ],
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "derived_01",
+      "category": "spanish_tomorrow_before_clock",
+      "input": "payload_alpha mañana a las 10am",
+      "now": "2026-10-19T08:00:00",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-10-20T10:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "mañana",
+        "10am"
+      ],
+      "reference_ack": [],
+      "derived_from": "history_26",
+      "gap_reason": "partial_or_wrong_interpretation",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "gap"
+    },
+    {
+      "id": "derived_02",
+      "category": "version_is_not_a_date",
+      "input": "remind tomorrow at 6am to payload_alpha model-1.7-hybrid",
+      "now": "2026-09-01T21:46:08",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-09-02T06:00:00",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "tomorrow",
+        "6am"
+      ],
+      "reference_ack": [],
+      "derived_from": "history_10",
+      "preserve_payload_fragments": [
+        "model-1.7-hybrid"
+      ],
+      "gap_reason": "safe_rejection_feature_missing",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "pass"
+    },
+    {
+      "id": "derived_03",
+      "category": "url_date_is_not_a_schedule",
+      "input": "remind me in 5 minutes to payload_alpha https://example.invalid/releases/2026-10-31",
+      "now": "2026-07-25T16:16:49",
+      "timezone": "America/Mexico_City",
+      "oracle_kind": "exact",
+      "expected_due": "2026-07-25T16:21:49",
+      "payload": "payload_alpha",
+      "forbidden_title_fragments": [
+        "in 5 minutes"
+      ],
+      "reference_ack": [],
+      "derived_from": "history_02",
+      "preserve_payload_fragments": [
+        "https://example.invalid/releases/2026-10-31"
+      ],
+      "gap_reason": "safe_rejection_feature_missing",
+      "baseline_compatibility": "gap",
+      "baseline_safety": "pass"
+    }
+  ]
+}
