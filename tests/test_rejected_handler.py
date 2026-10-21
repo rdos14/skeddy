@@ -17,8 +17,6 @@ from app.services.scheduler import ReminderScheduler
 @pytest.mark.parametrize(
     "text",
     [
-        "next wednesday at 8am study wells",
-        "next friday at 8am test",
         "in two minutes today test",
         "in 1 second today test",
     ],

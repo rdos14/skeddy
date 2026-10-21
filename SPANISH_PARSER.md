@@ -18,6 +18,11 @@ colon clocks and dotted/spaced `a. m.` / `p. m.` are recognized. Midnight/noon
 are validated rather than guessed. Temporal text and request prefixes are removed
 from the title; user text is persisted verbatim as `original_text`.
 
+The shared English/history datetime analyzer also accepts numeric Spanish dates
+as day-first `DD/MM/YYYY`, `DD/MM/YY` or `DD-MM-YY` only. Two-digit years use
+the explicit `20YY` policy; `MM/DD` is invalid. See [DATETIME_PARSER.md](DATETIME_PARSER.md)
+for the public analysis API, pending-date flow and numbered-paste preview.
+
 ## Calendar policies
 
 - `hoy` is today; an expired clock is rejected, never rolled to tomorrow.

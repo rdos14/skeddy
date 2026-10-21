@@ -21,7 +21,7 @@ WEEKDAYS = {
 def format_schedule(schedule: Schedule) -> str:
     """Render persisted and newly parsed schedules without re-parsing user input."""
     if schedule.kind == "once" and schedule.run_date is not None:
-        return f"At {schedule.run_date:%Y-%m-%d %H:%M}"
+        return f"At {schedule.run_date:%d/%m/%Y %H:%M}"
     if schedule.kind == "interval":
         units = []
         for unit, amount in schedule.interval.items():

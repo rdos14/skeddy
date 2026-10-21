@@ -32,6 +32,9 @@ HELP = (
     "• <code>today at 18:00 check the server</code>\n"
     "• <code>in 30 min take a break</code>\n"
     "• <code>27.09 at 15:30 pay the bill</code>\n\n"
+    "• <code>27/10/2026 9:00 AM pay the bill</code>\n"
+    "• <code>Saturday at 9:00 AM review equipment</code>\n"
+    "• <code>August 29th, 2027 at 9:00 AM review equipment</code>\n\n"
     "<b>Recurring reminders</b>\n"
     "• <code>every day at 08:00 exercise</code>\n"
     "• <code>every monday at 10:00 send the report</code>\n"
@@ -46,8 +49,11 @@ HELP = (
     "• <code>30 de julio a las 9:00 a. m. revisar equipo</code>\n"
     "'próximo' excludes today; 'este' means the current week. "
     "Past 'hoy/este' times are rejected. No default hour is chosen.\n"
-    "English one-off 'next weekday', Spanish recurrence/fractional phrases, "
-    "and voice messages are not supported yet."
+    "English/Spanish date forms use a day-first numeric date: DD/MM/YYYY, "
+    "DD/MM/YY or DD-MM-YY (YY means 20YY); MM/DD is rejected. "
+    "Date-only requests ask for a clock and never default to 09:00 or noon. "
+    "Past dates and relative forms such as 'yesterday' or '7 hours ago' are "
+    "rejected. Numbered multi-line pastes show a preview and require /confirm."
 )
 
 

@@ -119,11 +119,18 @@ The SQLite database is persisted to `./data` on the host.
 ### Supported grammar
 
 - **One-off:** `ertaga …`, `bugun …`, `in 30 minutes …`, `2 soatdan keyin …`,
-  `27.09 soat 15:30 da …`, `2026-10-01 …`, or just a bare time (`soat 9 da …`).
+  `27.09 soat 15:30 da …`, `2026-10-01 …`, day-first `27/10/2026 09:00 …`,
+  `Saturday at 9:00 AM …`, or just a bare time (`soat 9 da …`).
 - **Recurring:** `har kuni …`, `har <weekday> …`, `har soatda …`,
   `har N daqiqa/soat/kun/hafta …`, `har oyning <ordinal> <weekday>sida …`.
 - **Day periods:** `ertalab` (09:00), `tush` (12:00), `kechqurun` (19:00),
   `kechasi` (22:00) — used when no explicit time is given.
+
+Numeric dates are always day-first (`DD/MM/YYYY`, `DD/MM/YY`, `DD-MM-YY`);
+two-digit years explicitly mean `20YY`, and `MM/DD` is rejected. Date-only
+requests ask for a clock rather than guessing one. Numbered multiline pastes
+receive a per-line preview and require explicit confirmation. See
+[`DATETIME_PARSER.md`](DATETIME_PARSER.md) for the analysis and pending-draft APIs.
 
 ## 🧪 Development
 

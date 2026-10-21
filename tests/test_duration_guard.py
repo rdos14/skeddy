@@ -44,9 +44,6 @@ def test_complete_relative_duration(text, minutes):
         "in 0 minutes today test",
         "every 0 minutes test",
         "every two hours today test",
-        "next wednesday at 8am study wells for presentation",
-        "next friday at 8am test",
-        "this friday at 8am test",
         "tomorrow at 8am next friday test",
         "in one minute tomorrow test",
         "in one minute today tomorrow test",
@@ -62,6 +59,23 @@ def test_complete_relative_duration(text, minutes):
 )
 def test_unsupported_or_conflicting_time_is_rejected(text):
     assert parse(text, now=NOW) is None
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        (
+            "next wednesday at 8am study wells for presentation",
+            datetime(2026, 10, 21, 8),
+        ),
+        ("next friday at 8am test", datetime(2026, 10, 23, 8)),
+        ("this friday at 8am test", datetime(2026, 10, 23, 8)),
+    ],
+)
+def test_supported_english_weekday_forms(text, expected):
+    result = parse(text, now=NOW)
+    assert result is not None
+    assert result.schedule.run_date == expected
 
 
 @pytest.mark.parametrize(

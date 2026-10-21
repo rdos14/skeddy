@@ -1,4 +1,5 @@
 """Middleware that opens one DB session per update and injects repositories."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -8,7 +9,12 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 
 from app.database.base import Database
-from app.database.repository import ReminderRepository, UserRepository
+from app.database.repository import (
+    PendingBatchRepository,
+    PendingDraftRepository,
+    ReminderRepository,
+    UserRepository,
+)
 
 
 class DatabaseMiddleware(BaseMiddleware):
@@ -26,6 +32,8 @@ class DatabaseMiddleware(BaseMiddleware):
             data["session"] = session
             data["users"] = UserRepository(session)
             data["reminders"] = ReminderRepository(session)
+            data["pending"] = PendingDraftRepository(session)
+            data["pending_batches"] = PendingBatchRepository(session)
             data["default_tz"] = self._default_tz
             result = await handler(event, data)
             await session.commit()

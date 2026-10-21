@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app.nlp import patterns as P
+from app.nlp.dates import analyze_datetime, has_datetime_intent
 from app.nlp.recurrence import Schedule, nth_weekday_cron
 from app.nlp.spanish import has_spanish_timing, parse_spanish
 from app.presentation import format_schedule
@@ -50,6 +51,12 @@ class _Spans:
 def parse(text: str, *, now: datetime | None = None) -> ParsedReminder | None:
     now = now or datetime.now()
     original = text.strip()
+    if has_datetime_intent(original):
+        analysis = analyze_datetime(original, now=now)
+        if not analysis.complete or analysis.due is None:
+            return None
+        schedule = Schedule(kind="once", run_date=analysis.due)
+        return ParsedReminder(analysis.message, schedule, format_schedule(schedule))
     if has_spanish_timing(original):
         try:
             result = parse_spanish(original, now)
