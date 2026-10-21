@@ -38,6 +38,9 @@ HELP = (
     "• <code>every 15 min check the oven</code>\n\n"
     "<b>Manage reminders</b>: /list, then use the delete button.\n"
     "<b>Timezone</b>: <code>/timezone America/Mexico_City</code>\n"
+    "For durations, use digits or 'one' (for example, in one minute).\n"
+    "One-off 'next weekday' phrases are not supported yet. "
+    "Use an explicit date and time instead.\n"
     "Voice messages and Spanish parsing are not available yet."
 )
 

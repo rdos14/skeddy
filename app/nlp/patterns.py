@@ -3,6 +3,7 @@
 Everything the parser needs to recognise time, weekdays, ordinals and
 recurrence keywords lives here so the grammar is easy to extend.
 """
+
 from __future__ import annotations
 
 import re
@@ -136,22 +137,25 @@ TIME_RE = re.compile(
 )
 
 # "in 30 minutes", "30 daqiqadan keyin", "2 soatdan song"
+UNIT_ALTERNATION = "|".join(re.escape(u) for u in sorted(UNITS, key=len, reverse=True))
+
 RELATIVE_RE = re.compile(
-    r"""
+    rf"""
+    (?<![\w.+-])
     (?:\bin\s+)?
-    (?P<amount>\d+)\s*
-    (?P<unit>daqiqa|minut|minute|minutes|min|soat|hour|hours|kun|day|days|hafta|week|weeks)
-    (?:dan)?\s*(?:keyin|song|so'ng|soʻng|later)?
+    (?P<amount>\d+|one\b)\s*
+    (?P<unit>{UNIT_ALTERNATION})(?:dan)?\b
+    (?:\s*(?:keyin|song|so'ng|soʻng|later)\b)?
     """,
     re.VERBOSE | re.IGNORECASE,
 )
 
 # "every 15 minutes", "har 2 soat"
 INTERVAL_RE = re.compile(
-    r"""
+    rf"""
     \b(?:har|every|each)\s+
     (?P<amount>\d+)\s*
-    (?P<unit>daqiqa|minut|minute|minutes|min|soat|hour|hours|kun|day|days|hafta|week|weeks)
+    (?P<unit>{UNIT_ALTERNATION})(?:da)?\b
     """,
     re.VERBOSE | re.IGNORECASE,
 )
@@ -182,3 +186,74 @@ WEEKDAY_RE = re.compile(rf"\b(?P<wd>{weekday_alternation()})\b", re.IGNORECASE)
 
 TOMORROW_WORDS = ("ertaga", "tomorrow")
 TODAY_WORDS = ("bugun", "today")
+
+# Known temporal tokens must not survive as a silently ignored part of a title.
+# This deliberately rejects unsupported forms rather than guessing a date.
+NUMBER_WORDS = (
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "hundred",
+    "a",
+    "an",
+    "half",
+    "quarter",
+)
+QUANTITY_PATTERN = rf"(?:[+-]?\d+(?:[.,]\d+)?|{'|'.join(NUMBER_WORDS)})"
+UNSUPPORTED_PREFIX_RE = re.compile(
+    rf"\b(?:after|within)\s+{QUANTITY_PATTERN}\b"
+    r"|\bin\s+(?:[+-]\d+(?:[.,]\d+)?|\d+[.,]\d+)\b",
+    re.IGNORECASE,
+)
+_TEMPORAL_WORDS = set(
+    (
+        *TODAY_WORDS,
+        *TOMORROW_WORDS,
+        *WEEKDAYS,
+        *EVERY_WORDS,
+        *DAILY_WORDS,
+        *WEEKLY_WORDS,
+        *MONTHLY_WORDS,
+        *HOURLY_WORDS,
+    )
+)
+_TEMPORAL_ALTERNATION = "|".join(
+    re.escape(w) for w in sorted(_TEMPORAL_WORDS, key=len, reverse=True)
+)
+UNCONSUMED_TEMPORAL_RE = re.compile(
+    rf"\b(?:{_TEMPORAL_ALTERNATION})\b"
+    rf"|\b(?:in|after|within)\s+{QUANTITY_PATTERN}\b"
+    rf"|\b{QUANTITY_PATTERN}\s*(?:{UNIT_ALTERNATION}|seconds?|months?|years?)\b"
+    r"|\b(?:next|this|coming|last)\s+(?:day|week|month|year|quarter|fortnight)\b",
+    re.IGNORECASE,
+)
+DAY_CONTEXTS = (
+    (re.compile(r"\b(?:bugun|today)\b", re.IGNORECASE), 0),
+    (re.compile(r"\b(?:ertaga|tomorrow)\b", re.IGNORECASE), 1),
+)
+MONTHLY_CONTEXT_RE = re.compile(
+    r"\b(?:har\s+oyning|har\s+oy|oylik|(?:of\s+)?every\s+month|monthly)\b",
+    re.IGNORECASE,
+)

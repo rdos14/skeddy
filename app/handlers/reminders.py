@@ -56,9 +56,13 @@ async def create_reminder(
     parsed = parse(message.text)
     if parsed is None:
         await message.answer(
-            "🤔 I couldn't understand the time. Try:\n"
+            "🤔 I couldn't safely understand the time. No reminder was created.\n\n"
+            "Try:\n"
+            "• <i>in one minute test</i>\n"
             "• <i>tomorrow at 09:00 call the dentist</i>\n"
             "• <i>every monday at 10:00 send the report</i>\n\n"
+            "One-off 'next weekday' phrases are not supported yet; "
+            "use an explicit date and time.\n"
             "More examples: /help"
         )
         return

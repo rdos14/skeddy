@@ -9,6 +9,7 @@ Turns free-form text such as::
 into a :class:`ParsedReminder` carrying a clean message and a
 :class:`~app.nlp.recurrence.Schedule` the scheduler can act on.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -51,10 +52,16 @@ def parse(text: str, *, now: datetime | None = None) -> ParsedReminder | None:
     low = original.lower()
     spans = _Spans(original)
 
-    hour, minute, period_used = _extract_time(low, spans)
-
-    schedule, _summary = _extract_schedule(low, spans, now, hour, minute)
+    if P.UNSUPPORTED_PREFIX_RE.search(low):
+        return None
+    try:
+        hour, minute, period_used = _extract_time(low, spans)
+        schedule, _summary = _extract_schedule(low, spans, now, hour, minute)
+    except (ValueError, OverflowError):
+        return None
     if schedule is None:
+        return None
+    if P.UNCONSUMED_TEMPORAL_RE.search(spans.remainder()):
         return None
 
     message = _clean_message(spans.remainder())
@@ -68,9 +75,8 @@ def parse(text: str, *, now: datetime | None = None) -> ParsedReminder | None:
 
 # --- time-of-day -----------------------------------------------------------
 
-def _extract_time(
-    low: str, spans: _Spans
-) -> tuple[int | None, int | None, bool]:
+
+def _extract_time(low: str, spans: _Spans) -> tuple[int | None, int | None, bool]:
     """Return (hour, minute, period_default_used)."""
     pm_hint = any(w in low for w in P.PM_HINTS)
     am_hint = any(w in low for w in P.AM_HINTS)
@@ -110,6 +116,7 @@ def _extract_time(
 
 # --- schedule --------------------------------------------------------------
 
+
 def _extract_schedule(
     low: str,
     spans: _Spans,
@@ -125,6 +132,8 @@ def _extract_schedule(
     if m:
         spans.consume(m.start(), m.end())
         amount = int(m.group("amount"))
+        if amount <= 0:
+            return None, ""
         unit = P.UNITS[m.group("unit").lower()]
         return (
             Schedule(kind="interval", interval={unit: amount}),
@@ -136,6 +145,8 @@ def _extract_schedule(
     if m and any(w in low for w in P.MONTHLY_WORDS + ("oy", "month")):
         spans.consume(m.start(), m.end())
         nth = P.ORDINALS[m.group("ord").lower()]
+        for context in P.MONTHLY_CONTEXT_RE.finditer(low):
+            spans.consume(context.start(), context.end())
         wd = P.WEEKDAYS[m.group("wd").lower()]
         cron = nth_weekday_cron(nth, P.CRON_DOW[wd], default_hour, default_minute)
         ord_uz = "oxirgi" if nth == -1 else f"{nth}-"
@@ -195,6 +206,8 @@ def _extract_schedule(
     #    "27.09" isn't misread as "09 soat" = 9 hours)
     dm = P.DATE_RE.search(low)
     if dm:
+        if hour is None:
+            return None, ""
         spans.consume(dm.start(), dm.end())
         if dm.group("y"):
             y, mo, d = int(dm.group("y")), int(dm.group("m")), int(dm.group("d"))
@@ -202,9 +215,16 @@ def _extract_schedule(
             d, mo = int(dm.group("d2")), int(dm.group("m2"))
             y = int(dm.group("y2")) if dm.group("y2") else now.year
         run_date = now.replace(
-            year=y, month=mo, day=d, hour=default_hour,
-            minute=default_minute, second=0, microsecond=0,
+            year=y,
+            month=mo,
+            day=d,
+            hour=default_hour,
+            minute=default_minute,
+            second=0,
+            microsecond=0,
         )
+        if run_date <= now:
+            return None, ""
         return (
             Schedule(kind="once", run_date=run_date),
             f"{run_date:%Y-%m-%d %H:%M} da",
@@ -213,10 +233,20 @@ def _extract_schedule(
     # 7) relative one-off: "in 30 minutes", "2 soatdan keyin"
     m = P.RELATIVE_RE.search(low)
     if m:
+        if hour is not None:
+            return None, ""
         spans.consume(m.start(), m.end())
-        amount = int(m.group("amount"))
+        raw_amount = m.group("amount").lower()
+        amount = 1 if raw_amount == "one" else int(raw_amount)
+        if amount <= 0:
+            return None, ""
         unit = P.UNITS[m.group("unit").lower()]
         run_date = now + timedelta(**{unit: amount})
+        for pattern, offset in P.DAY_CONTEXTS:
+            for context in pattern.finditer(low):
+                if run_date.date() != (now + timedelta(days=offset)).date():
+                    return None, ""
+                spans.consume(context.start(), context.end())
         return (
             Schedule(kind="once", run_date=run_date),
             f"{amount} {_unit_uz(unit)}dan keyin ({run_date:%Y-%m-%d %H:%M})",
@@ -224,6 +254,8 @@ def _extract_schedule(
 
     # 8) tomorrow / today (+ time)
     if any(w in low for w in P.TOMORROW_WORDS):
+        if hour is None:
+            return None, ""
         for w in P.TOMORROW_WORDS:
             i = low.find(w)
             if i != -1:
@@ -238,10 +270,17 @@ def _extract_schedule(
         )
 
     if any(w in low for w in P.TODAY_WORDS) or hour is not None:
+        explicit_today = any(
+            pattern.search(low) for pattern, offset in P.DAY_CONTEXTS if offset == 0
+        )
+        if hour is None:
+            return None, ""
         run_date = now.replace(
             hour=default_hour, minute=default_minute, second=0, microsecond=0
         )
         if run_date <= now:
+            if explicit_today:
+                return None, ""
             run_date += timedelta(days=1)
         for w in P.TODAY_WORDS:
             i = low.find(w)
@@ -257,6 +296,7 @@ def _extract_schedule(
 
 # --- helpers ---------------------------------------------------------------
 
+
 def _clean_message(raw: str) -> str:
     words = [w for w in raw.replace(",", " ").split() if w]
     kept = [w for w in words if w.lower().strip(".,!?:") not in P.FILLER_WORDS]
@@ -266,8 +306,13 @@ def _clean_message(raw: str) -> str:
 
 def _weekday_uz(wd: int) -> str:
     names = [
-        "dushanba", "seshanba", "chorshanba", "payshanba",
-        "juma", "shanba", "yakshanba",
+        "dushanba",
+        "seshanba",
+        "chorshanba",
+        "payshanba",
+        "juma",
+        "shanba",
+        "yakshanba",
     ]
     return names[wd]
 
