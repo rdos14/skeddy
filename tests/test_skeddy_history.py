@@ -28,7 +28,12 @@ def _parameters(target):
     parameters = []
     for case in CASES:
         marks = []
-        if case["baseline_" + target] == "gap" and not STRICT_AUDIT:
+        # Safety is an unconditional gate; only missing compatibility may xfail.
+        if (
+            target == "compatibility"
+            and case["baseline_compatibility"] == "gap"
+            and not STRICT_AUDIT
+        ):
             marks.append(
                 pytest.mark.xfail(
                     strict=True,
@@ -93,7 +98,7 @@ def test_fixture_shape_and_anonymization():
         for url in re.findall(r'https?://[^\s"<>]+', serialized)
     )
     for case in CASES:
-        assert case["baseline_safety"] in {"pass", "gap"}
+        assert case["baseline_safety"] == "pass", "Safety cannot be deferred as xfail"
         assert case["baseline_compatibility"] in {"pass", "gap"}
         assert case["timezone"] == "America/Mexico_City"
         assert "original_input" not in case and "source_id" not in case

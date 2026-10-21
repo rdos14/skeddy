@@ -227,8 +227,65 @@ UNSUPPORTED_PREFIX_RE = re.compile(
     r"|\bin\s+(?:[+-]\d+(?:[.,]\d+)?|\d+[.,]\d+)\b",
     re.IGNORECASE,
 )
+# Spanish date words are rejection markers only, not supported grammar.
+# Keep them in the residual-token check so a bare AM/PM clock cannot silently
+# override an unsupported requested day. Reserved words in titles may therefore
+# be conservatively rejected until Spanish interpretation is implemented.
+UNSUPPORTED_SPANISH_TEMPORAL_WORDS = (
+    "hoy",
+    "mañana",
+    "manana",
+    "lunes",
+    "martes",
+    "miércoles",
+    "miercoles",
+    "jueves",
+    "viernes",
+    "sábado",
+    "sabado",
+    "domingo",
+    "ayer",
+    "anteayer",
+    "próximo",
+    "proximo",
+    "próxima",
+    "proxima",
+    "segundo",
+    "segundos",
+    "minuto",
+    "minutos",
+    "hora",
+    "horas",
+    "día",
+    "dia",
+    "días",
+    "dias",
+    "semana",
+    "semanas",
+    "mes",
+    "meses",
+    "año",
+    "años",
+)
+# Month names need a date-like preposition: "Julio" alone can be a task's person.
+_SPANISH_MONTHS = (
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "setiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+)
 _TEMPORAL_WORDS = set(
     (
+        *UNSUPPORTED_SPANISH_TEMPORAL_WORDS,
         *TODAY_WORDS,
         *TOMORROW_WORDS,
         *WEEKDAYS,
@@ -244,6 +301,7 @@ _TEMPORAL_ALTERNATION = "|".join(
 )
 UNCONSUMED_TEMPORAL_RE = re.compile(
     rf"\b(?:{_TEMPORAL_ALTERNATION})\b"
+    rf"|\b(?:de|en|para)\s+(?:el\s+)?(?:{'|'.join(_SPANISH_MONTHS)})\b"
     rf"|\b(?:in|after|within)\s+{QUANTITY_PATTERN}\b"
     rf"|\b{QUANTITY_PATTERN}\s*(?:{UNIT_ALTERNATION}|seconds?|months?|years?)\b"
     r"|\b(?:next|this|coming|last)\s+(?:day|week|month|year|quarter|fortnight)\b",
