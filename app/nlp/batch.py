@@ -7,7 +7,14 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.nlp.dates import DateAnalysis, analyze_datetime, has_datetime_intent
+from app.nlp.item_intent import (
+    has_explicit_time,
+    has_timing_intent,
+    item_kind_for,
+    task_body,
+)
 from app.nlp.parser import ParsedReminder, parse
+from app.nlp.recurrence import Schedule
 
 _ITEM = re.compile(r"^\s*(?P<number>\d+)\s*[.)]\s*(?P<text>.+?)\s*$")
 
@@ -48,10 +55,25 @@ def analyze_batch(text: str, *, now: datetime | None = None) -> BatchAnalysis:
         if not match:
             continue
         item_text = match.group("text").strip()
-        if has_datetime_intent(item_text):
-            analysis = analyze_datetime(item_text, now=now)
+        body = task_body(item_text)
+        unscheduled = bool(
+            item_kind_for(item_text) == "task" and body and not has_timing_intent(body)
+        )
+        parsed: ParsedReminder | None = None
+        if unscheduled:
+            title = body[:1].upper() + body[1:]
+            analysis = DateAnalysis(
+                status="complete", message=title, reason="task without alarm"
+            )
+            parsed = ParsedReminder(title, Schedule(kind="once"), "No active alarm")
+        elif has_datetime_intent(body):
+            analysis = analyze_datetime(body, now=now)
+        elif item_kind_for(item_text) == "task" and not has_explicit_time(body):
+            analysis = DateAnalysis(
+                status="missing_time", reason="an explicit clock is required"
+            )
         else:
-            parsed = parse(item_text, now=now)
+            parsed = parse(body, now=now)
             analysis = DateAnalysis(
                 status="complete" if parsed else "invalid",
                 due=parsed.schedule.run_date
@@ -60,7 +82,8 @@ def analyze_batch(text: str, *, now: datetime | None = None) -> BatchAnalysis:
                 message=parsed.message if parsed else "",
                 reason="legacy grammar" if parsed else "unrecognized datetime",
             )
-        parsed = parse(item_text, now=now) if analysis.status == "complete" else None
+        if not unscheduled:
+            parsed = parse(body, now=now) if analysis.status == "complete" else None
         items.append(
             BatchItem(
                 number=int(match.group("number") or fallback),

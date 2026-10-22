@@ -60,7 +60,13 @@ class ReminderRepository:
         original_text: str,
         human_readable: str,
         schedule: Schedule,
+        item_kind: str = "reminder",
     ) -> Reminder:
+        if item_kind not in {"reminder", "task"}:
+            raise ValueError("Creation kind must be reminder or task")
+        unscheduled = schedule.kind == "once" and schedule.run_date is None
+        if unscheduled and item_kind != "task":
+            raise ValueError("Only a Task can be created without an alarm")
         reminder = Reminder(
             user_id=user_id,
             message=message,
@@ -68,11 +74,12 @@ class ReminderRepository:
             human_readable=human_readable,
             schedule_kind=schedule.kind,
             schedule_spec=schedule.to_json(),
+            active=not unscheduled,
         )
         self._session.add(reminder)
         await self._session.flush()
         self._session.add(
-            ItemState(reminder_id=reminder.id, user_id=user_id, kind="reminder")
+            ItemState(reminder_id=reminder.id, user_id=user_id, kind=item_kind)
         )
         await self._session.flush()
         return reminder

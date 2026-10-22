@@ -39,6 +39,12 @@ from app.nlp import (
     is_batch_input,
     parse,
 )
+from app.nlp.item_intent import (
+    has_explicit_time,
+    has_timing_intent,
+    item_kind_for,
+    task_body,
+)
 from app.nlp.recurrence import Schedule
 from app.presentation import (
     format_schedule,
@@ -721,18 +727,39 @@ async def create_reminder(
                 original_text=draft.original_text,
                 human_readable=format_schedule(schedule),
                 schedule=schedule,
+                item_kind=item_kind_for(draft.original_text),
             )
             await pending.delete(message.chat.id)
             scheduler.register(reminder, user.timezone)
             await message.answer(
-                f"✅ <b>Reminder added!</b>\n\n📝 {visual_text(draft.message)}\n"
+                f"✅ <b>{item_kind_for(draft.original_text).title()} added!</b>\n\n"
+                f"📝 {visual_text(draft.message)}\n"
                 f"🕒 {format_schedule(schedule)}\n1️⃣ One-time · 🌍 {user.timezone}"
             )
             return
 
+    requested_kind = item_kind_for(message.text)
+    body = task_body(message.text)
+    if requested_kind == "task" and body and not has_timing_intent(body):
+        user = await users.get_or_create(message.chat.id, default_tz)
+        title = body[:1].upper() + body[1:]
+        await reminders.create(
+            user_id=message.chat.id,
+            message=title,
+            original_text=message.text,
+            human_readable="No active alarm",
+            schedule=Schedule(kind="once"),
+            item_kind="task",
+        )
+        await message.answer(
+            f"✅ <b>Task added!</b>\n\n📝 {visual_text(title)}\n"
+            "No alarm scheduled. It stays pending until Complete."
+        )
+        return
+
     date_analysis = None
-    if has_datetime_intent(message.text):
-        date_analysis = analyze_datetime(message.text, now=now)
+    if has_datetime_intent(body):
+        date_analysis = analyze_datetime(body, now=now)
         if date_analysis.status == "missing_time" and date_analysis.target_date:
             if pending is not None:
                 await pending.upsert(
@@ -748,10 +775,22 @@ async def create_reminder(
                 "or /cancel."
             )
             return
+    if (
+        requested_kind == "task"
+        and date_analysis is None
+        and has_timing_intent(body)
+        and not has_explicit_time(body)
+    ):
+        await message.answer(
+            "Please resend the task with an explicit clock "
+            "for that date or recurrence. "
+            "No task or alarm was created; I will not choose a default hour."
+        )
+        return
     parsed = (
-        parse(message.text, now=now)
-        if date_analysis is not None
-        else parse(message.text)
+        parse(body, now=now)
+        if date_analysis is not None or requested_kind == "task"
+        else parse(body)
     )
     if parsed is None:
         if date_analysis is not None and date_analysis.status == "past":
@@ -780,10 +819,12 @@ async def create_reminder(
         original_text=message.text,
         human_readable=parsed.human_readable,
         schedule=parsed.schedule,
+        item_kind=requested_kind,
     )
     scheduler.register(reminder, user.timezone)
     kind_label = "🔁 Recurring" if parsed.schedule.is_recurring else "1️⃣ One-time"
     await message.answer(
-        f"✅ <b>Reminder added!</b>\n\n📝 {visual_text(parsed.message)}\n"
+        f"✅ <b>{requested_kind.title()} added!</b>\n\n"
+        f"📝 {visual_text(parsed.message)}\n"
         f"🕒 {parsed.human_readable}\n{kind_label} · 🌍 {user.timezone}"
     )

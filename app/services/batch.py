@@ -11,6 +11,7 @@ from app.database.repository import (
     UserRepository,
 )
 from app.nlp.batch import BatchAnalysis
+from app.nlp.item_intent import item_kind_for
 from app.nlp.recurrence import Schedule
 from app.presentation import format_schedule
 from app.services.scheduler import ReminderScheduler
@@ -24,6 +25,10 @@ def serialize_batch(batch: BatchAnalysis) -> str:
                 "number": item.number,
                 "original_text": item.original_text,
                 "status": item.status,
+                "item_kind": item_kind_for(item.original_text),
+                "schedule_spec": item.parsed.schedule.to_json()
+                if item.parsed
+                else None,
                 "message": item.analysis.message,
                 "due": item.analysis.due.isoformat() if item.analysis.due else None,
                 "reason": item.analysis.reason,
@@ -69,18 +74,35 @@ async def confirm_batch(
         items = json.loads(batch.items_json)
         user = await users.get_or_create(user_id, default_tz)
         for item in items:
-            if item.get("status") != "complete" or not item.get("due"):
+            if item.get("status") != "complete":
                 continue
-            due = datetime.fromisoformat(item["due"])
-            if due <= now:
+            kind = item_kind_for(item["original_text"])
+            if item.get("schedule_spec"):
+                schedule = Schedule.from_json(item["schedule_spec"])
+            elif item.get("due"):
+                schedule = Schedule(
+                    kind="once", run_date=datetime.fromisoformat(item["due"])
+                )
+            else:
                 continue
-            schedule = Schedule(kind="once", run_date=due)
+            unscheduled = schedule.kind == "once" and schedule.run_date is None
+            if unscheduled and kind != "task":
+                continue
+            if (
+                schedule.kind == "once"
+                and schedule.run_date is not None
+                and schedule.run_date <= now
+            ):
+                continue
             reminder = await reminders.create(
                 user_id=user_id,
                 message=item["message"],
                 original_text=item["original_text"],
-                human_readable=format_schedule(schedule),
+                human_readable="No active alarm"
+                if unscheduled
+                else format_schedule(schedule),
                 schedule=schedule,
+                item_kind=kind,
             )
             created.append(reminder)
         await pending_batches.delete(user_id)
