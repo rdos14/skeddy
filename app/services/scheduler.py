@@ -170,6 +170,8 @@ class ReminderScheduler:
                 # again after restart.
                 if current_state is None or current_state.kind != "note":
                     await repo.deactivate(reminder_id)
+                    await session.flush()
+                    await ItemRepository(session).retire_if_idle(user_id, reminder_id)
                     await session.commit()
 
     async def _fire_extra(
@@ -201,15 +203,8 @@ class ReminderScheduler:
             await session.commit()
             self._remove_extra_job(event_id)
 
-            if state is None or state.kind == "reminder":
-                remaining = await ItemRepository(session).extra_events(
-                    user_id, reminder_id
-                )
-                if not remaining and not self._scheduler.get_job(f"rem:{reminder_id}"):
-                    reminder.active = False
-                    if state is not None:
-                        state.status = "retired"
-                    await session.commit()
+            await ItemRepository(session).retire_if_idle(user_id, reminder_id)
+            await session.commit()
 
     def _remove_extra_job(self, event_id: int) -> None:
         job = self._scheduler.get_job(f"extra:{event_id}")

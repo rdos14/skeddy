@@ -66,6 +66,16 @@ class PendingBatch(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class MenuInputReceipt(Base):
+    """Durable replay fence for successfully consumed Telegram menu replies."""
+
+    __tablename__ = "menu_input_receipts"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class ItemState(Base):
     """Additive, explicit UI state for a reminder.
 

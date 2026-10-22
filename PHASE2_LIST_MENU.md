@@ -92,11 +92,11 @@ parseable; un ID inexistente o ajeno solo responde `not found`.
 
 ## Tipos
 
-- **Reminder:** una alarma one-shot se retira después de disparar. Su
-  `ItemState` comienza en `pending`; después del primary queda visible en
-  `pending` aunque `Reminder.active=False`. Si se añadieron extras, pasa a
-  `retired` únicamente cuando ya no quedan extras activos, y nunca pasa a
-  `completed` por una entrega.
+- **Reminder:** `Reminder.active` se desactiva al consumir el primary one-shot.
+  Si quedan extras, el item sigue `pending`; cuando no queda ninguna alarma
+  pasa a `retired` y deja la lista activa. `retired` indica agotamiento de
+  alarmas, no prueba de entrega ni finalización manual. Nunca pasa a
+  `completed` automáticamente.
 - **Task:** permanece `pending` tras la entrega y su primary queda inactivo
   para impedir duplicados tras reinicio; el usuario debe Complete.
 - **Note:** no tiene notificaciones; convertir a Note cancela el primary y
@@ -116,6 +116,17 @@ nunca aparece en Show completed por inferencia.
 - `item_states`: tipo, status y `completed_at` explícitos por reminder.
 - `additional_events`: avisos adicionales persistentes por item.
 - `menu_drafts`: contexto owner/item-scoped de Add time con TTL.
+- `menu_input_receipts`: clave `(user_id, message_id)` de respuestas de menú
+  ya consumidas; se escribe en la misma transacción que el aviso adicional.
+  Evita crear un Reminder distinto al repetirse una actualización tras un
+  reinicio; la protección no depende de la caché en memoria.
+
+Las mutaciones de repositorio preparan los datos; los handlers hacen commit
+antes de cancelar o registrar jobs y antes de responder por Telegram. Los
+callers directos de `add_time` deben hacer commit y luego registrar los extras
+con `register_extras`, o reiniciar el scheduler para reconstruirlos. Los jobs
+recurrents permanecen registrados tras cada disparo. La confirmación de borrado
+legacy también marca el item deleted y desactiva todos sus eventos durables.
 
 Un rollback al código anterior ignora estas tablas y conserva las filas
 originales; las alarmas adicionales quedan suspendidas hasta volver al código

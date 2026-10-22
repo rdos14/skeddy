@@ -91,7 +91,9 @@ def item_list_keyboard(
         InlineKeyboardButton(
             text=f"{page + 1}/{max(pages, 1)}",
             callback_data=ItemCB(
-                action="page", item_id=0, page=page,
+                action="page",
+                item_id=0,
+                page=page,
                 value="completed" if completed else "",
             ).pack(),
         ),
@@ -163,15 +165,19 @@ def delete_confirmation_keyboard(
         InlineKeyboardButton(
             text="🗑 Delete",
             callback_data=ItemCB(
-                action="confirmdelete", item_id=item_id, page=page
-                , value="completed" if completed else ""
+                action="confirmdelete",
+                item_id=item_id,
+                page=page,
+                value="completed" if completed else "",
             ).pack(),
         ),
         InlineKeyboardButton(
             text="Cancel",
             callback_data=ItemCB(
-                action="canceldelete", item_id=item_id, page=page
-                , value="completed" if completed else ""
+                action="canceldelete",
+                item_id=item_id,
+                page=page,
+                value="completed" if completed else "",
             ).pack(),
         ),
     )

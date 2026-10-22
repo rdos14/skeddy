@@ -267,9 +267,7 @@ async def complete_item(
     scheduler: ReminderScheduler,
 ):
     user_id = await _user_id(callback)
-    state = await items.complete(
-        user_id, callback_data.item_id, scheduler=scheduler
-    )
+    state = await items.complete(user_id, callback_data.item_id, scheduler=scheduler)
     if state is None:
         await callback.answer("Item not found or not yours.")
         return
@@ -287,7 +285,10 @@ async def complete_item(
     scheduler.cancel_all(callback_data.item_id)
     await callback.answer("Completed ✅")
     await _show_list_after(
-        callback, items, user_id, callback_data.page,
+        callback,
+        items,
+        user_id,
+        callback_data.page,
         completed=callback_data.value == "completed",
     )
 
@@ -355,9 +356,7 @@ async def confirm_delete_item(
     scheduler: ReminderScheduler,
 ):
     user_id = await _user_id(callback)
-    state = await items.delete(
-        user_id, callback_data.item_id, scheduler=scheduler
-    )
+    state = await items.delete(user_id, callback_data.item_id, scheduler=scheduler)
     if state is None:
         await callback.answer("Item not found or not yours.")
         return
@@ -375,7 +374,10 @@ async def confirm_delete_item(
     scheduler.cancel_all(callback_data.item_id)
     await callback.answer("Deleted ✅")
     await _show_list_after(
-        callback, items, user_id, callback_data.page,
+        callback,
+        items,
+        user_id,
+        callback_data.page,
         completed=callback_data.value == "completed",
     )
 
@@ -535,7 +537,11 @@ async def confirm_delete_reminder(
     if reminder is None or reminder.user_id != user_id:
         await callback.answer("Item not found or not yours.")
         return
-    await reminders.deactivate(reminder.id)
+    items = ItemRepository(reminders._session)
+    state = await items.delete(user_id, reminder.id)
+    if state is None:
+        await callback.answer("Item not found or not yours.")
+        return
     await reminders._session.commit()
     scheduler.cancel_all(reminder.id)
     await callback.answer("Deleted ✅")
@@ -582,6 +588,15 @@ async def create_reminder(
     owner = await users.get(message.chat.id)
     now = _local_now(owner.timezone if owner is not None else default_tz)
     message_id = getattr(message, "message_id", None)
+    if (
+        items is not None
+        and message_id is not None
+        and await items.menu_input_consumed(message.chat.id, message_id)
+    ):
+        await message.answer(
+            "This input was already processed; no new reminder was created."
+        )
+        return
     if message_id is not None:
         cutoff = now - timedelta(hours=24)
         for key, seen_at in list(_CONSUMED_MENU_INPUTS.items()):
@@ -615,10 +630,10 @@ async def create_reminder(
                     "Send one clock such as <code>9:00 AM</code>, or /cancel."
                 )
             elif result.status == "added":
+                if message_id is not None:
+                    await items.record_menu_input(message.chat.id, message_id)
                 await _commit(items)
-                reminder = await items._owned(
-                    message.chat.id, menu_draft.reminder_id
-                )
+                reminder = await items._owned(message.chat.id, menu_draft.reminder_id)
                 if reminder is not None:
                     events = await items.extra_events(
                         message.chat.id, menu_draft.reminder_id
@@ -632,10 +647,10 @@ async def create_reminder(
                     "The original alarm was preserved."
                 )
             elif result.status == "duplicate":
+                if message_id is not None:
+                    await items.record_menu_input(message.chat.id, message_id)
                 await _commit(items)
-                reminder = await items._owned(
-                    message.chat.id, menu_draft.reminder_id
-                )
+                reminder = await items._owned(message.chat.id, menu_draft.reminder_id)
                 if reminder is not None:
                     events = await items.extra_events(
                         message.chat.id, menu_draft.reminder_id
@@ -656,10 +671,14 @@ async def create_reminder(
                 )
             return
 
-    if message_id is not None and (
-        message.chat.id,
-        message_id,
-    ) in _CONSUMED_MENU_INPUTS:
+    if (
+        message_id is not None
+        and (
+            message.chat.id,
+            message_id,
+        )
+        in _CONSUMED_MENU_INPUTS
+    ):
         await message.answer(
             "This input was already processed; no new reminder was created."
         )

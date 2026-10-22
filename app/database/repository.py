@@ -16,6 +16,7 @@ from app.database.models import (
     AdditionalEvent,
     ItemState,
     MenuDraft,
+    MenuInputReceipt,
     PendingBatch,
     PendingDraft,
     Reminder,
@@ -185,15 +186,43 @@ class ItemRepository:
             if completed:
                 if status != "completed":
                     continue
-            elif status == "completed" or status == "deleted":
+            elif status in {"completed", "deleted", "retired"}:
                 continue
             elif state is None and not reminder.active:
                 continue
-            rows.append(ItemMenuItem(reminder, kind=kind, status=status))
+            extras = await self.extra_events(user_id, reminder.id)
+            rows.append(
+                ItemMenuItem(
+                    reminder,
+                    kind=kind,
+                    status=status,
+                    next_extra_at=extras[0].due_at if extras else None,
+                )
+            )
         return rows[offset : offset + limit]
 
     async def count_items(self, user_id: int, *, completed: bool = False) -> int:
         return len(await self.list_items(user_id, completed=completed, limit=10**9))
+
+    async def retire_if_idle(self, user_id: int, reminder_id: int) -> None:
+        """Archive an exhausted Reminder, never infer manual completion."""
+        primary_active = await self._session.scalar(
+            select(Reminder.active).where(
+                Reminder.id == reminder_id, Reminder.user_id == user_id
+            )
+        )
+        if primary_active is not False or await self.extra_events(user_id, reminder_id):
+            return
+        await self._session.execute(
+            update(ItemState)
+            .where(
+                ItemState.reminder_id == reminder_id,
+                ItemState.user_id == user_id,
+                ItemState.kind == "reminder",
+                ItemState.status == "pending",
+            )
+            .values(status="retired")
+        )
 
     async def _mutate(
         self, user_id: int, reminder_id: int
@@ -351,6 +380,16 @@ class ItemRepository:
         self, user_id: int, *, now: datetime | None = None
     ) -> MenuDraft | None:
         return await self._draft(user_id, None, now=now)
+
+    async def menu_input_consumed(self, user_id: int, message_id: int) -> bool:
+        return (
+            await self._session.get(MenuInputReceipt, (user_id, message_id)) is not None
+        )
+
+    async def record_menu_input(self, user_id: int, message_id: int) -> None:
+        if not await self.menu_input_consumed(user_id, message_id):
+            self._session.add(MenuInputReceipt(user_id=user_id, message_id=message_id))
+            await self._session.flush()
 
     async def delete_menu_drafts(self, user_id: int) -> None:
         await self._session.execute(
@@ -567,6 +606,7 @@ class ItemMenuItem:
     reminder: Reminder
     kind: str
     status: str
+    next_extra_at: datetime | None = None
 
     @property
     def id(self) -> int:

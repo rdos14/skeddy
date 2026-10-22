@@ -57,6 +57,9 @@ def visual_text(value: str, limit: int = 240) -> str:
 
 
 def item_schedule(item: ItemMenuItem) -> str:
+    next_extra = getattr(item, "next_extra_at", None)
+    if next_extra is not None and not getattr(item, "active", True):
+        return f"Additional alarm: {next_extra:%d/%m/%Y %H:%M}"
     if (
         getattr(item, "kind", "reminder") == "note"
         or getattr(item, "status", "pending") in {"completed", "retired"}
@@ -101,6 +104,16 @@ def render_item_detail(item: ItemMenuItem, extra_times: list[str] | None = None)
         f"Status: {html.escape(item.status)}",
         f"Scheduled: {html.escape(schedule_text, quote=False)}",
     ]
+    if item.kind != "note":
+        try:
+            original_schedule = Schedule.from_json(item.schedule_spec)
+            if (
+                original_schedule.kind == "once"
+                and original_schedule.run_date is not None
+            ):
+                lines.append(f"Deadline: {original_schedule.run_date:%d/%m/%Y %H:%M}")
+        except (ValueError, KeyError, TypeError):
+            pass
     if item.kind == "note":
         lines.append("Alarm: None (Note)")
     else:
@@ -115,10 +128,6 @@ def render_item_detail(item: ItemMenuItem, extra_times: list[str] | None = None)
         lines.append(
             "Additional times: "
             + ", ".join(html.escape(value) for value in extra_times[:8])
-            + (
-                f" (+{len(extra_times) - 8} more)"
-                if len(extra_times) > 8
-                else ""
-            )
+            + (f" (+{len(extra_times) - 8} more)" if len(extra_times) > 8 else "")
         )
     return _bounded_lines(lines)
