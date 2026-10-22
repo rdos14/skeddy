@@ -1,12 +1,16 @@
 <div align="center">
 
-# 🧠 Skeddy
+# 🧠 Toddy
 
 **A natural-language reminder bot for Telegram.**
 
-Talk to it the way you'd talk to a person — in Uzbek or English — and Skeddy
+Talk to it the way you'd talk to a person — in English or bounded Spanish — and Toddy
 figures out *what* to remind you and *when*, including complex recurring
 schedules like “the first Monday of every month at 9 AM.”
+
+Toddy is the product name in the user-facing experience. The repository and
+technical identifiers retain their upstream Skeddy names; the MIT license and
+upstream credits are preserved.
 
 [![CI](https://github.com/robotic0/Skeddy/actions/workflows/ci.yml/badge.svg)](https://github.com/robotic0/Skeddy/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
@@ -18,32 +22,33 @@ schedules like “the first Monday of every month at 9 AM.”
 
 ---
 
-## ✨ What makes Skeddy different
+## ✨ What makes Toddy different
 
-Most reminder bots force you to learn a rigid command syntax. Skeddy reads
+Most reminder bots force you to learn a rigid command syntax. Toddy reads
 **conversational language** and extracts the timing itself:
 
-> *«Har oyning birinchi dushanbasida ertalab soat 9 da server jurnallarini tekshirishni eslat»*
+> *“remind me every first Monday at 9 AM to check the server logs”*
 >
-> → 🔁 `har oyning 1- dushanbasida 09:00 da` — a recurring monthly job.
+> → 🔁 `Every month: 1 monday at 09:00` — a recurring monthly job.
 
 ```
-"ertaga soat 9 da shifokorga qo'ng'iroq qil"   → one-off, tomorrow 09:00
-"har kuni 22:00 da suv ich"                     → daily at 22:00
-"har dushanba 10:00 da hisobot"                 → weekly, Mondays 10:00
-"har 15 daqiqada holatni tekshir"               → every 15 minutes
-"30 daqiqadan keyin choynakni o'chir"           → one-off, +30 min
+"tomorrow at 9 call the doctor"                 → one-off, tomorrow 09:00
+"every day at 22:00 drink water"                → daily at 22:00
+"every monday at 10 send the report"            → weekly, Mondays 10:00
+"every 15 minutes check the status"             → every 15 minutes
+"in 30 minutes turn off the kettle"             → one-off, +30 min
 "every monday at 18:30 water the plants"        → weekly, Mondays 18:30
 ```
 
 ## 🧩 How the NLP engine works
 
-Skeddy uses a **rule-based, bilingual grammar** — fast, deterministic and
+Toddy uses a **rule-based English grammar with bounded Spanish dates** — fast, deterministic and
 fully offline (no external API calls, no API keys). The pipeline lives in
 [`app/nlp`](app/nlp):
 
-1. **`patterns.py`** — the lexicon: weekdays, ordinals, time units and day
-   periods in both Uzbek and English, plus the compiled regexes.
+1. **`patterns.py`** — the English lexicon: weekdays, ordinals, time units and
+   day periods, plus compiled regexes. Retired Uzbek temporal forms are a
+   separate rejection-only guard, not active grammar.
 2. **`parser.py`** — extracts the time-of-day, detects the recurrence type
    (interval · daily · weekly · monthly Nth-weekday · one-off), and strips the
    temporal tokens to leave a clean reminder message.
@@ -118,13 +123,23 @@ The SQLite database is persisted to `./data` on the host.
 
 ### Supported grammar
 
-- **One-off:** `ertaga …`, `bugun …`, `in 30 minutes …`, `2 soatdan keyin …`,
-  `27.09 soat 15:30 da …`, `2026-10-01 …`, day-first `27/10/2026 09:00 …`,
-  `Saturday at 9:00 AM …`, or just a bare time (`soat 9 da …`).
-- **Recurring:** `har kuni …`, `har <weekday> …`, `har soatda …`,
-  `har N daqiqa/soat/kun/hafta …`, `har oyning <ordinal> <weekday>sida …`.
-- **Day periods:** `ertalab` (09:00), `tush` (12:00), `kechqurun` (19:00),
-  `kechasi` (22:00) — used when no explicit time is given.
+- **One-off:** `tomorrow …`, `today …`, `in 30 minutes …`, `27.09 at 15:30 …`,
+  `2026-10-01 …`, day-first `27/10/2026 09:00 …`, `Saturday at 9:00 AM …`,
+  or just a bare time (`at 9 …`).
+- **Recurring:** `every day …`, `every <weekday> …`, `every hour …`,
+  `every N minutes/hours/days/weeks …`, `every first <weekday> …`.
+- **Day periods:** `morning` (09:00), `noon` (12:00), `evening` (19:00),
+  `night` (22:00) — used when no explicit time is given.
+
+### Language boundary and public analysis API
+
+`app.nlp.parse()` accepts the active English grammar and the bounded Spanish
+one-off grammar. `analyze_datetime()` returns `invalid` for retired Uzbek
+temporal constructions instead of allowing a clock fallback; `analyze_batch()`
+passes that rejection through, so a task such as `t ertaga payload` cannot
+become an untimed row. English identifiers and `minute` remain unaffected.
+Existing persisted schedules are displayed and reloaded as stored; startup
+does not reclassify or reparse historical rows.
 
 Numeric dates are always day-first (`DD/MM/YYYY`, `DD/MM/YY`, `DD-MM-YY`);
 two-digit years explicitly mean `20YY`, and `MM/DD` is rejected. Date-only

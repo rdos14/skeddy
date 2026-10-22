@@ -1,8 +1,7 @@
-"""Natural-language reminder parser (Uzbek + English, bounded Spanish).
+"""Natural-language reminder parser (English and bounded Spanish).
 
 Turns free-form text such as::
 
-    "Har oyning birinchi dushanbasida ertalab soat 9 da serverni tekshir"
     "remind me every monday at 18:30 to water the plants"
     "in 30 minutes call mom"
 
@@ -17,12 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app.nlp import patterns as P
-from app.nlp.dates import (
-    analyze_datetime,
-    has_datetime_intent,
-    has_recurrence_intent,
-    has_unsupported_clock,
-)
+from app.nlp.dates import analyze_datetime, has_datetime_intent, has_unsupported_clock
 from app.nlp.recurrence import Schedule, nth_weekday_cron
 from app.nlp.spanish import has_spanish_timing, parse_spanish
 from app.presentation import format_schedule
@@ -59,9 +53,11 @@ def parse(text: str, *, now: datetime | None = None) -> ParsedReminder | None:
     original = text.strip()
     if has_unsupported_clock(original):
         return None
+    if P.RETIRED_UZBEK_TEMPORAL_RE.search(original):
+        return None
     # Recurrence grammar owns its weekday/time tokens.  Do not let the
     # one-off date analyzer reinterpret a recurring request as a single run.
-    if has_datetime_intent(original) and not has_recurrence_intent(original):
+    if has_datetime_intent(original) and not P.RECURRENCE_RE.search(original):
         analysis = analyze_datetime(original, now=now)
         if not analysis.complete or analysis.due is None:
             return None
@@ -112,11 +108,9 @@ def _extract_time(low: str, spans: _Spans) -> tuple[int | None, int | None, bool
     for match in P.TIME_RE.finditer(low):
         token = match.group(0).strip()
         has_marker = (
-            "soat" in token
-            or token.startswith("at ")
+            token.startswith("at ")
             or ":" in token
             or match.group("ampm")
-            or token.endswith("da")
         )
         if not has_marker:
             continue
@@ -163,16 +157,17 @@ def _extract_schedule(
         if amount <= 0:
             return None, ""
         unit = P.UNITS[m.group("unit").lower()]
+        unit_label = unit.removesuffix("s") if amount == 1 else unit
         return (
             Schedule(kind="interval", interval={unit: amount}),
-            f"har {amount} {_unit_uz(unit)}da",
+            f"Every {amount} {unit_label}",
         )
 
     # 2) "Nth <weekday> of every month" -> monthly cron
     m = P.NTH_WEEKDAY_RE.search(low)
     if m and (
-        any(w in low for w in P.MONTHLY_WORDS + ("oy", "month"))
-        or re.search(r"\b(?:every|each|har)\b", low)
+        any(w in low for w in P.MONTHLY_WORDS + ("month",))
+        or re.search(r"\b(?:every|each)\b", low)
     ):
         spans.consume(m.start(), m.end())
         nth = P.ORDINALS[m.group("ord").lower()]
@@ -182,11 +177,12 @@ def _extract_schedule(
             spans.consume(context.start(), context.end())
         wd = P.WEEKDAYS[m.group("wd").lower()]
         cron = nth_weekday_cron(nth, P.CRON_DOW[wd], default_hour, default_minute)
-        ord_uz = "oxirgi" if nth == -1 else f"{nth}-"
+        ordinal = "last" if nth == -1 else str(nth)
+        weekday = next(name for name, value in P.WEEKDAYS.items() if value == wd)
         return (
             Schedule(kind="cron", cron=cron),
-            f"har oyning {ord_uz} {_weekday_uz(wd)}sida "
-            f"{default_hour:02d}:{default_minute:02d} da",
+            f"Every month: {ordinal} {weekday} at "
+            f"{default_hour:02d}:{default_minute:02d}",
         )
 
     # 3) hourly
@@ -197,7 +193,7 @@ def _extract_schedule(
                 spans.consume(i, i + len(w))
         return (
             Schedule(kind="cron", cron={"minute": default_minute}),
-            "har soatda",
+            "Every hour",
         )
 
     # 4) daily
@@ -210,10 +206,10 @@ def _extract_schedule(
             Schedule(
                 kind="cron", cron={"hour": default_hour, "minute": default_minute}
             ),
-            f"har kuni {default_hour:02d}:{default_minute:02d} da",
+            f"Every day at {default_hour:02d}:{default_minute:02d}",
         )
 
-    # 5) weekly on a specific weekday ("har dushanba" / "every monday")
+    # 5) weekly on a specific weekday ("every monday")
     has_every = any(w in low for w in P.EVERY_WORDS) or any(
         w in low for w in P.WEEKLY_WORDS
     )
@@ -232,7 +228,8 @@ def _extract_schedule(
         }
         return (
             Schedule(kind="cron", cron=cron),
-            f"har {_weekday_uz(wd)} {default_hour:02d}:{default_minute:02d} da",
+            f"Every {next(name for name, value in P.WEEKDAYS.items() if value == wd)} "
+            f"at {default_hour:02d}:{default_minute:02d}",
         )
 
     # 6) explicit date (checked before relative times so that a date like
@@ -260,10 +257,10 @@ def _extract_schedule(
             return None, ""
         return (
             Schedule(kind="once", run_date=run_date),
-            f"{run_date:%Y-%m-%d %H:%M} da",
+            f"{run_date:%Y-%m-%d %H:%M} at",
         )
 
-    # 7) relative one-off: "in 30 minutes", "2 soatdan keyin"
+    # 7) relative one-off: "in 30 minutes"
     m = P.RELATIVE_RE.search(low)
     if m:
         if hour is not None:
@@ -282,7 +279,8 @@ def _extract_schedule(
                 spans.consume(context.start(), context.end())
         return (
             Schedule(kind="once", run_date=run_date),
-            f"{amount} {_unit_uz(unit)}dan keyin ({run_date:%Y-%m-%d %H:%M})",
+            f"{amount} {unit.removesuffix('s') if amount == 1 else unit} later "
+            f"({run_date:%Y-%m-%d %H:%M})",
         )
 
     # 8) tomorrow / today (+ time)
@@ -299,7 +297,7 @@ def _extract_schedule(
         )
         return (
             Schedule(kind="once", run_date=run_date),
-            f"ertaga {default_hour:02d}:{default_minute:02d} da",
+            f"Tomorrow at {default_hour:02d}:{default_minute:02d}",
         )
 
     if any(w in low for w in P.TODAY_WORDS) or hour is not None:
@@ -321,7 +319,7 @@ def _extract_schedule(
                 spans.consume(i, i + len(w))
         return (
             Schedule(kind="once", run_date=run_date),
-            f"{run_date:%Y-%m-%d %H:%M} da",
+            f"{run_date:%Y-%m-%d %H:%M} at",
         )
 
     return None, ""
@@ -335,25 +333,3 @@ def _clean_message(raw: str) -> str:
     kept = [w for w in words if w.lower().strip(".,!?:") not in P.FILLER_WORDS]
     message = " ".join(kept).strip(" .,-—:")
     return message[:1].upper() + message[1:] if message else ""
-
-
-def _weekday_uz(wd: int) -> str:
-    names = [
-        "dushanba",
-        "seshanba",
-        "chorshanba",
-        "payshanba",
-        "juma",
-        "shanba",
-        "yakshanba",
-    ]
-    return names[wd]
-
-
-def _unit_uz(unit: str) -> str:
-    return {
-        "minutes": "daqiqa",
-        "hours": "soat",
-        "days": "kun",
-        "weeks": "hafta",
-    }[unit]

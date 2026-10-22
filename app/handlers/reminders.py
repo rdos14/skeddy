@@ -40,7 +40,6 @@ from app.nlp import (
     parse,
 )
 from app.nlp.item_intent import (
-    has_explicit_time,
     has_timing_intent,
     item_kind_for,
     task_body,
@@ -779,7 +778,6 @@ async def create_reminder(
         requested_kind == "task"
         and date_analysis is None
         and has_timing_intent(body)
-        and not has_explicit_time(body)
     ):
         await message.answer(
             "Please resend the task with an explicit clock "

@@ -1,7 +1,8 @@
-"""Bilingual (Uzbek + English) lexicon and regexes for the reminder parser.
+"""English lexicon and regexes for the reminder parser.
 
 Everything the parser needs to recognise time, weekdays, ordinals and
-recurrence keywords lives here so the grammar is easy to extend.
+recurrence keywords lives here.  Retired Uzbek forms are kept only in the
+bounded rejection guard at the bottom; they are not parser grammar.
 """
 
 from __future__ import annotations
@@ -10,14 +11,6 @@ import re
 
 # --- Weekdays -> Python weekday number (Mon=0 .. Sun=6) --------------------
 WEEKDAYS: dict[str, int] = {
-    # Uzbek
-    "dushanba": 0,
-    "seshanba": 1,
-    "chorshanba": 2,
-    "payshanba": 3,
-    "juma": 4,
-    "shanba": 5,
-    "yakshanba": 6,
     # English
     "monday": 0,
     "tuesday": 1,
@@ -40,16 +33,6 @@ CRON_DOW = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 # --- Ordinals (nth weekday of month) ---------------------------------------
 ORDINALS: dict[str, int] = {
-    # Uzbek
-    "birinchi": 1,
-    "ikkinchi": 2,
-    "uchinchi": 3,
-    "to'rtinchi": 4,
-    "toʻrtinchi": 4,
-    "turtinchi": 4,
-    "oxirgi": -1,
-    "songgi": -1,
-    "so'nggi": -1,
     # English
     "first": 1,
     "second": 2,
@@ -60,33 +43,19 @@ ORDINALS: dict[str, int] = {
 
 # --- Time-unit words -> canonical unit -------------------------------------
 UNITS: dict[str, str] = {
-    "daqiqa": "minutes",
-    "minut": "minutes",
     "minute": "minutes",
     "minutes": "minutes",
     "min": "minutes",
-    "soat": "hours",
     "hour": "hours",
     "hours": "hours",
-    "kun": "days",
     "day": "days",
     "days": "days",
-    "hafta": "weeks",
     "week": "weeks",
     "weeks": "weeks",
 }
 
 # --- Day-period words -> default hour ---------------------------------------
 DAY_PERIODS: dict[str, int] = {
-    "ertalab": 9,
-    "tong": 7,
-    "tush": 12,
-    "tushda": 12,
-    "peshin": 12,
-    "kunduzi": 14,
-    "kechqurun": 19,
-    "kechasi": 22,
-    "kech": 21,
     "morning": 9,
     "noon": 12,
     "afternoon": 14,
@@ -95,48 +64,40 @@ DAY_PERIODS: dict[str, int] = {
 }
 
 # Words that mark a PM interpretation for a bare hour.
-PM_HINTS = {"kechqurun", "kechasi", "kech", "evening", "night", "pm", "afternoon"}
-AM_HINTS = {"ertalab", "tong", "morning", "am"}
+PM_HINTS = {"evening", "night", "pm", "afternoon"}
+AM_HINTS = {"morning", "am"}
 
 # --- Recurrence keyword groups ---------------------------------------------
-EVERY_WORDS = ("har", "every", "each")
-DAILY_WORDS = ("har kuni", "kunlik", "every day", "daily", "everyday")
-WEEKLY_WORDS = ("har hafta", "haftalik", "every week", "weekly")
-MONTHLY_WORDS = ("har oy", "oylik", "every month", "monthly")
-HOURLY_WORDS = ("har soat", "soatlik", "every hour", "hourly")
+EVERY_WORDS = ("every", "each")
+DAILY_WORDS = ("every day", "daily", "everyday")
+WEEKLY_WORDS = ("every week", "weekly")
+MONTHLY_WORDS = ("every month", "monthly")
+HOURLY_WORDS = ("every hour", "hourly")
 
 # Filler words stripped from the extracted reminder message.
 FILLER_WORDS = (
-    "menga",
-    "eslat",
-    "eslatib",
-    "eslatma",
-    "eslatishni",
-    "qil",
-    "qilishni",
     "remind",
     "me",
     "to",
     "that",
     "please",
-    "kerak",
 )
 
 # --- Compiled regexes -------------------------------------------------------
 
-# "soat 9:30 da", "soat 9 da", "at 9:30", "9am", "9 pm", "9:00"
+# "at 9:30", "9am", "9 pm", "9:00"
 TIME_RE = re.compile(
     r"""
-    (?:\bsoat\s+|\bat\s+)?          # optional "soat"/"at"
+    (?:\bat\s+)?                    # optional "at"
     (?P<hour>2[0-3]|[01]?\d)         # hour 0-23 (two-digit forms tried first)
     (?::(?P<minute>[0-5]\d))?        # optional :minutes
     \s*(?P<ampm>am|pm)?              # optional am/pm
-    (?:\s*da\b)?                     # optional Uzbek locative "da"
+    (?!\w)
     """,
     re.VERBOSE | re.IGNORECASE,
 )
 
-# "in 30 minutes", "30 daqiqadan keyin", "2 soatdan song"
+# "in 30 minutes", "2 hours later"
 UNIT_ALTERNATION = "|".join(re.escape(u) for u in sorted(UNITS, key=len, reverse=True))
 
 RELATIVE_RE = re.compile(
@@ -144,18 +105,18 @@ RELATIVE_RE = re.compile(
     (?<![\w.+-])
     (?:\bin\s+)?
     (?P<amount>\d+|one\b)\s*
-    (?P<unit>{UNIT_ALTERNATION})(?:dan)?\b
-    (?:\s*(?:keyin|song|so'ng|soʻng|later)\b)?
+    (?P<unit>{UNIT_ALTERNATION})\b
+    (?:\s*(?:later)\b)?
     """,
     re.VERBOSE | re.IGNORECASE,
 )
 
-# "every 15 minutes", "har 2 soat"
+# "every 15 minutes"
 INTERVAL_RE = re.compile(
     rf"""
-    \b(?:har|every|each)\s+
+    \b(?:every|each)\s+
     (?P<amount>\d+)\s*
-    (?P<unit>{UNIT_ALTERNATION})(?:da)?\b
+    (?P<unit>{UNIT_ALTERNATION})\b
     """,
     re.VERBOSE | re.IGNORECASE,
 )
@@ -175,17 +136,21 @@ def ordinal_alternation() -> str:
     return "|".join(re.escape(o) for o in sorted(ORDINALS, key=len, reverse=True))
 
 
-# "birinchi dushanba", "first monday", "oxirgi juma"
+# "first monday", "last friday"
 NTH_WEEKDAY_RE = re.compile(
     rf"\b(?P<ord>{ordinal_alternation()})\s+(?P<wd>{weekday_alternation()})",
     re.IGNORECASE,
 )
 
-# a bare weekday mention, e.g. "dushanba" / "monday"
+# a bare weekday mention, e.g. "monday"
 WEEKDAY_RE = re.compile(rf"\b(?P<wd>{weekday_alternation()})\b", re.IGNORECASE)
 
-TOMORROW_WORDS = ("ertaga", "tomorrow")
-TODAY_WORDS = ("bugun", "today")
+TOMORROW_WORDS = ("tomorrow",)
+TODAY_WORDS = ("today",)
+RECURRENCE_RE = re.compile(
+    r"\b(?:every|each|daily|everyday|weekly|monthly|hourly)\b",
+    re.IGNORECASE,
+)
 
 # Known temporal tokens must not survive as a silently ignored part of a title.
 # This deliberately rejects unsupported forms rather than guessing a date.
@@ -308,10 +273,32 @@ UNCONSUMED_TEMPORAL_RE = re.compile(
     re.IGNORECASE,
 )
 DAY_CONTEXTS = (
-    (re.compile(r"\b(?:bugun|today)\b", re.IGNORECASE), 0),
-    (re.compile(r"\b(?:ertaga|tomorrow)\b", re.IGNORECASE), 1),
+    (re.compile(r"\btoday\b", re.IGNORECASE), 0),
+    (re.compile(r"\btomorrow\b", re.IGNORECASE), 1),
 )
 MONTHLY_CONTEXT_RE = re.compile(
-    r"\b(?:har\s+oyning|har\s+oy|oylik|(?:of\s+)?every\s+month|monthly)\b",
+    r"\b(?:of\s+)?every\s+month|\bmonthly\b",
     re.IGNORECASE,
+)
+
+# Retired Uzbek temporal grammar.  This is deliberately a rejection-only
+# guard: it is never used to construct a Schedule.  Context and word
+# boundaries keep ordinary English identifiers and ``minute`` untouched.
+RETIRED_UZBEK_TEMPORAL_RE = re.compile(
+    r"""
+    (?<!\w)(?:
+        ertaga|bugun|kecha|kechqurun|kechasi|ertalab|tong|tushda|peshin|kunduzi
+        |dushanba|seshanba|chorshanba|payshanba|juma|shanba|yakshanba
+    )(?!\w)
+    |(?<!\w)har\s+(?:kuni|hafta|oy(?:ning)?|soat(?:da)?
+        |dushanba|seshanba|chorshanba|payshanba|juma|shanba|yakshanba)\b
+    |(?<!\w)har\s*\d+\s*(?:daqiqa|minut|soat|kun|hafta)(?:da|dan)?\b
+    |(?<!\w)har\s*(?:soat(?:da)?|kun(?:i)?|hafta(?:lik)?)(?!\w)
+    |(?<!\w)soat\s*(?:2[0-3]|[01]?\d)(?::[0-5]\d)?\s*(?:da)?(?!\w)
+    |(?<!\w)\d{1,2}\.\d{1,2}\s+soat\s*(?:2[0-3]|[01]?\d)
+        (?::[0-5]\d)?\s*(?:da)?(?!\w)
+    |(?<!\w)\d+\s*(?:daqiqa|minut|soat|kun|hafta)(?:da|dan)?\b
+    |(?<!\w)har\s+oyning\s+(?:birinchi|ikkinchi|uchinchi|to'rtinchi|turtinchi|oxirgi|songgi|so'nggi)\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )

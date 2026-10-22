@@ -66,11 +66,7 @@ _CLOCK = re.compile(
     r"(?P<ampm>[ap]\s*\.?\s*m\.?)?(?!\w|[:.]\d|\.)",
     re.IGNORECASE,
 )
-_RECURRENCE = re.compile(
-    r"\b(?:every|each|har|daily|everyday|weekly|monthly|hourly|"
-    r"cada|diariamente|semanalmente|mensualmente|anualmente)\b",
-    re.IGNORECASE,
-)
+_RECURRENCE = P.RECURRENCE_RE
 _BAD_CLOCK = re.compile(
     r"(?:\b(?:at|a\s+las?)\s*[+-]?\d+(?:[.,]\d+)"
     r"|(?<!\w)[+-]\d+(?:[.,]?\d*)\s*[ap]\s*\.?\s*m\.?"
@@ -115,6 +111,8 @@ class DateAnalysis:
 
 
 def has_datetime_intent(text: str) -> bool:
+    if P.RETIRED_UZBEK_TEMPORAL_RE.search(text):
+        return True
     if _RECURRENCE.search(text):
         return False
     for _marker in _DATE_MARKER.finditer(text):
@@ -157,7 +155,7 @@ def _clock(
 
 
 def has_recurrence_intent(text: str) -> bool:
-    """Return whether the text belongs to recurring, not one-off, grammar."""
+    """Compatibility wrapper for the English recurrence grammar."""
     return bool(_RECURRENCE.search(text))
 
 
@@ -173,6 +171,7 @@ def _has_temporal_residue(text: str, spans: list[tuple[int, int]]) -> bool:
     remainder = "".join(chars)
     return bool(
         P.UNCONSUMED_TEMPORAL_RE.search(remainder)
+        or P.RETIRED_UZBEK_TEMPORAL_RE.search(remainder)
         or _UNSUPPORTED_CLOCK_WORDS.search(remainder)
     )
 
@@ -260,6 +259,8 @@ def _analysis(
 def analyze_datetime(text: str, *, now: datetime | None = None) -> DateAnalysis:
     """Analyze bounded English/slash date intent without creating a reminder."""
     now = now or datetime.now()
+    if P.RETIRED_UZBEK_TEMPORAL_RE.search(text):
+        return _invalid_analysis(text, [], "retired Uzbek temporal grammar")
     if has_recurrence_intent(text):
         return _invalid_analysis(text, [], "recurring input is not a one-off date")
     markers = list(_DATE_MARKER.finditer(text))
@@ -469,7 +470,11 @@ def combine_pending_date(
     target_date: date, clock_text: str, *, now: datetime
 ) -> DateAnalysis:
     """Apply only a newly supplied clock to a previously frozen calendar date."""
-    if _BAD_CLOCK.search(clock_text) or _UNSUPPORTED_CLOCK_WORDS.search(clock_text):
+    if (
+        _BAD_CLOCK.search(clock_text)
+        or _UNSUPPORTED_CLOCK_WORDS.search(clock_text)
+        or P.RETIRED_UZBEK_TEMPORAL_RE.search(clock_text)
+    ):
         return DateAnalysis(status="invalid", reason="one explicit clock is required")
     result = _clock(clock_text, [])
     if not isinstance(result, tuple):

@@ -1,7 +1,7 @@
 [project]
 name = "skeddy"
 version = "1.0.0"
-description = "A natural-language reminder bot for Telegram — understands conversational Uzbek and English and builds recurring schedules."
+description = "A natural-language reminder bot for Telegram — understands bounded English and Spanish dates and builds recurring schedules."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

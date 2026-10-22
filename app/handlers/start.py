@@ -12,7 +12,7 @@ from app.services.scheduler import is_valid_timezone
 router = Router(name="start")
 
 WELCOME = (
-    "👋 Hello! I'm <b>Skeddy</b>, your reminder bot.\n\n"
+    "👋 Hello! I'm <b>Toddy</b>, your reminder bot.\n\n"
     "Tell me what to remind you about and when:\n\n"
     "• <i>tomorrow at 09:00 call the dentist</i>\n"
     "• <i>every day at 22:00 drink water</i>\n"
@@ -24,9 +24,9 @@ WELCOME = (
 )
 
 HELP = (
-    "<b>How Skeddy works</b>\n\n"
+    "<b>How Toddy works</b>\n\n"
     "Send a message describing what to remember and when. "
-    "The parser supports English, Uzbek and bounded Spanish dates.\n\n"
+    "The parser supports English and bounded Spanish dates.\n\n"
     "<b>One-time reminders</b>\n"
     "• <code>tomorrow at 09:00 call the dentist</code>\n"
     "• <code>today at 18:00 check the server</code>\n"
@@ -40,6 +40,9 @@ HELP = (
     "• <code>every monday at 10:00 send the report</code>\n"
     "• <code>every hour stretch</code>\n"
     "• <code>every 15 min check the oven</code>\n\n"
+    "<b>Tasks</b>: start with standalone <code>t </code> or include the "
+    "complete word <code>task</code>. A task without timing has no alarm and "
+    "stays pending until completed.\n\n"
     "<b>Manage reminders</b>: /list, then use the delete button.\n"
     "<b>Timezone</b>: <code>/timezone America/Mexico_City</code>\n"
     "For durations, use digits or 'one' (for example, in one minute).\n"

@@ -8,7 +8,6 @@ from datetime import datetime
 
 from app.nlp.dates import DateAnalysis, analyze_datetime, has_datetime_intent
 from app.nlp.item_intent import (
-    has_explicit_time,
     has_timing_intent,
     item_kind_for,
     task_body,
@@ -68,7 +67,7 @@ def analyze_batch(text: str, *, now: datetime | None = None) -> BatchAnalysis:
             parsed = ParsedReminder(title, Schedule(kind="once"), "No active alarm")
         elif has_datetime_intent(body):
             analysis = analyze_datetime(body, now=now)
-        elif item_kind_for(item_text) == "task" and not has_explicit_time(body):
+        elif item_kind_for(item_text) == "task" and has_timing_intent(body):
             analysis = DateAnalysis(
                 status="missing_time", reason="an explicit clock is required"
             )

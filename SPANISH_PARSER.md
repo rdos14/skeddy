@@ -1,7 +1,8 @@
 # Spanish one-off dates (point 2)
 
 Spanish scheduling is deterministic and bounded; it is not general natural-language
-understanding. English/Uzbek parsing and stored schedules are preserved.
+understanding. English parsing and stored schedules are preserved; retired Uzbek
+temporal forms are rejected rather than interpreted.
 
 ## Supported
 

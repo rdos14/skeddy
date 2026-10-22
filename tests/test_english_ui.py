@@ -11,7 +11,7 @@ from app.database.base import Database
 from app.database.models import Reminder
 from app.database.repository import ReminderRepository, UserRepository
 from app.handlers.reminders import cmd_list, create_reminder, delete_reminder
-from app.handlers.start import cmd_help, cmd_start, cmd_timezone
+from app.handlers.start import HELP, WELCOME, cmd_help, cmd_start, cmd_timezone
 from app.keyboards.inline import ReminderCB, confirm_reminder, reminder_list
 from app.nlp import parse
 from app.nlp.recurrence import Schedule
@@ -143,3 +143,36 @@ def test_help_describes_supported_spanish_and_explicit_time_requirement():
     assert "explicit time" in help_text
     assert "Spanish parsing are not available" not in help_text
     assert len(help_text) <= 4096
+
+
+def test_help_and_welcome_use_toddy_and_do_not_advertise_retired_language():
+    for text in (WELCOME, HELP):
+        assert "Toddy" in text
+        assert "Skeddy" not in text
+        assert "Uzbek" not in text
+
+
+def test_retired_uzbek_task_is_rejected_without_creating_a_row(tmp_path):
+    async def run():
+        db = Database("sqlite+aiosqlite:///" + str(tmp_path / "uzbek-rejection.db"))
+        await db.create_all()
+        message = SimpleNamespace(
+            chat=SimpleNamespace(id=202),
+            text="t ertaga payload",
+            answer=AsyncMock(),
+        )
+        scheduler = ReminderScheduler(
+            SimpleNamespace(send_message=AsyncMock()), db, "UTC"
+        )
+        try:
+            async with db.session() as session:
+                users = UserRepository(session)
+                reminders = ReminderRepository(session)
+                await create_reminder(message, users, reminders, scheduler, "UTC")
+                assert "No reminder was created" in message.answer.call_args.args[0]
+                assert await reminders.list_active(202) == []
+                assert scheduler._scheduler.get_jobs() == []
+        finally:
+            await db.dispose()
+
+    asyncio.run(run())

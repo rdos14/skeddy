@@ -1,4 +1,4 @@
-"""Bounded Spanish one-off dates, isolated from legacy English/Uzbek grammar."""
+"""Bounded Spanish one-off dates, isolated from the English grammar."""
 
 from __future__ import annotations
 
