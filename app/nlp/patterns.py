@@ -148,7 +148,8 @@ WEEKDAY_RE = re.compile(rf"\b(?P<wd>{weekday_alternation()})\b", re.IGNORECASE)
 TOMORROW_WORDS = ("tomorrow",)
 TODAY_WORDS = ("today",)
 RECURRENCE_RE = re.compile(
-    r"\b(?:every|each|daily|everyday|weekly|monthly|hourly)\b",
+    r"\b(?:every|each|daily|everyday|weekly|monthly|hourly|"
+    r"cada|diariamente|semanalmente|mensualmente|anualmente)\b",
     re.IGNORECASE,
 )
 
@@ -287,7 +288,7 @@ MONTHLY_CONTEXT_RE = re.compile(
 RETIRED_UZBEK_TEMPORAL_RE = re.compile(
     r"""
     (?<!\w)(?:
-        ertaga|bugun|kecha|kechqurun|kechasi|ertalab|tong|tushda|peshin|kunduzi
+        ertaga|bugun|kecha|kech|kechqurun|kechasi|ertalab|tong|tush|tushda|peshin|kunduzi
         |dushanba|seshanba|chorshanba|payshanba|juma|shanba|yakshanba
     )(?!\w)
     |(?<!\w)har\s+(?:kuni|hafta|oy(?:ning)?|soat(?:da)?

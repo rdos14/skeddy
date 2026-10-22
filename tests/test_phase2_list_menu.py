@@ -355,7 +355,7 @@ def test_add_time_missing_clock_persists_date_without_event(tmp_path):
                     scheduler=scheduler,
                     timezone="UTC",
                 )
-                draft = await ItemRepository(session).get_menu_draft(101)
+                draft = await ItemRepository(session).get_menu_draft(101, now=NOW)
                 assert result.status == "missing_time"
                 assert (
                     draft is not None and draft.target_date.isoformat() == "2026-10-23"
@@ -521,7 +521,11 @@ def test_recurring_primary_survives_manual_fire(tmp_path):
     asyncio.run(run())
 
 
-def test_addtime_payload_is_not_a_new_alarm_or_item(tmp_path):
+def test_addtime_payload_is_not_a_new_alarm_or_item(tmp_path, monkeypatch):
+    import app.handlers.reminders as handlers
+
+    monkeypatch.setattr(handlers, "_local_now", lambda timezone: NOW)
+
     async def run():
         db = Database("sqlite+aiosqlite:///" + str(tmp_path / "handler-repeat.db"))
         await db.create_all()

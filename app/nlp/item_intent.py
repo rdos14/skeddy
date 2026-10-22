@@ -14,6 +14,22 @@ def task_body(text: str) -> str:
     return _TASK_PREFIX.sub("", text, count=1).strip()
 
 
+def has_explicit_time(text: str) -> bool:
+    """Recognize explicit EN/ES clocks or durations, never retired grammar."""
+    from app.nlp import patterns
+
+    if (
+        patterns.RELATIVE_RE.search(text)
+        or patterns.INTERVAL_RE.search(text)
+        or re.search(r"\ba\s+las?\s+\d", text, re.IGNORECASE)
+    ):
+        return True
+    return any(
+        m.group("ampm") or ":" in m.group() or m.group().lower().startswith("at ")
+        for m in patterns.TIME_RE.finditer(text)
+    )
+
+
 def has_timing_intent(text: str) -> bool:
     """Conservative gate: never turn a malformed requested date into no alarm."""
     from app.nlp import patterns as patterns
