@@ -9,8 +9,13 @@ from sqlalchemy import select
 
 from app.database.base import Database
 from app.database.models import AdditionalEvent, Reminder
-from app.database.repository import ItemMenuItem, ItemRepository, ReminderRepository
-from app.handlers.reminders import delete_item
+from app.database.repository import (
+    ItemMenuItem,
+    ItemRepository,
+    ReminderRepository,
+    UserRepository,
+)
+from app.handlers.reminders import create_reminder, delete_item
 from app.keyboards.inline import item_detail_keyboard, item_list_keyboard
 from app.nlp.recurrence import Schedule
 from app.presentation import render_item_list
@@ -227,7 +232,9 @@ def test_task_fire_stays_pending_and_note_has_no_jobs(tmp_path):
                 )
                 await ItemRepository(session).change_type(101, task.id, "task")
                 scheduler.register(task, "UTC")
+                await session.commit()
                 await scheduler._fire(task.id, 101, "task")
+                transport.send_message.assert_awaited_once()
                 state = await ItemRepository(session).get_item_state(101, task.id)
                 assert state.status == "pending"
                 assert state.kind == "task"
@@ -486,3 +493,114 @@ def test_large_escaped_list_is_bounded_without_cutting_html_entity():
     assert len(text) <= 4096
     assert "<&>" not in text
     assert text.count("&lt;") == text.count("&gt;")
+
+
+def test_recurring_primary_survives_manual_fire(tmp_path):
+    async def run():
+        db = Database("sqlite+aiosqlite:///" + str(tmp_path / "recurring.db"))
+        await db.create_all()
+        transport = SimpleNamespace(send_message=AsyncMock())
+        scheduler = ReminderScheduler(transport, db, "UTC")
+        try:
+            async with db.session() as session:
+                reminder = await ReminderRepository(session).create(
+                    user_id=101,
+                    message="cron",
+                    original_text="cron",
+                    human_readable="Every day",
+                    schedule=Schedule(kind="cron", cron={"hour": 9, "minute": 0}),
+                )
+                await session.commit()
+            scheduler.register(reminder, "UTC")
+            await scheduler._fire(reminder.id, 101, reminder.message)
+            assert scheduler._scheduler.get_job(f"rem:{reminder.id}") is not None
+            assert transport.send_message.await_count == 1
+        finally:
+            await db.dispose()
+
+    asyncio.run(run())
+
+
+def test_addtime_payload_is_not_a_new_alarm_or_item(tmp_path):
+    async def run():
+        db = Database("sqlite+aiosqlite:///" + str(tmp_path / "handler-repeat.db"))
+        await db.create_all()
+        transport = SimpleNamespace(send_message=AsyncMock())
+        scheduler = ReminderScheduler(transport, db, "UTC")
+        try:
+            async with db.session() as session:
+                await UserRepository(session).get_or_create(101, "UTC")
+                reminder = await ReminderRepository(session).create(
+                    user_id=101,
+                    message="task",
+                    original_text="task",
+                    human_readable="At 22/10/2026 09:00",
+                    schedule=Schedule(kind="once", run_date=NOW + timedelta(days=1)),
+                )
+                items = ItemRepository(session)
+                await items.begin_add_time(
+                    101, reminder.id, expires_at=NOW + timedelta(hours=24)
+                )
+                await session.commit()
+                message = SimpleNamespace(
+                    chat=SimpleNamespace(id=101),
+                    from_user=SimpleNamespace(id=101),
+                    text="23/10/2026 10:30",
+                    message_id=7001,
+                    answer=AsyncMock(),
+                )
+                await create_reminder(
+                    message,
+                    UserRepository(session),
+                    ReminderRepository(session),
+                    scheduler,
+                    "UTC",
+                    items=items,
+                )
+                await create_reminder(
+                    message,
+                    UserRepository(session),
+                    ReminderRepository(session),
+                    scheduler,
+                    "UTC",
+                    items=items,
+                )
+                assert len((await session.scalars(select(Reminder))).all()) == 1
+                assert len(await items.extra_events(101, reminder.id)) == 1
+        finally:
+            await db.dispose()
+
+    asyncio.run(run())
+
+
+def test_task_oneoff_is_not_rescheduled_after_restart(tmp_path):
+    async def run():
+        url = "sqlite+aiosqlite:///" + str(tmp_path / "task-restart.db")
+        db = Database(url)
+        await db.create_all()
+        transport = SimpleNamespace(send_message=AsyncMock())
+        scheduler = ReminderScheduler(transport, db, "UTC")
+        try:
+            async with db.session() as session:
+                reminder = await ReminderRepository(session).create(
+                    user_id=101,
+                    message="task",
+                    original_text="task",
+                    human_readable="At 22/10/2026 09:00",
+                    schedule=Schedule(kind="once", run_date=NOW + timedelta(days=1)),
+                )
+                await ItemRepository(session).change_type(101, reminder.id, "task")
+                await session.commit()
+            scheduler.register(reminder, "UTC")
+            await scheduler._fire(reminder.id, 101, reminder.message)
+            restarted = ReminderScheduler(transport, db, "UTC")
+            await restarted._reload_all()
+            assert restarted._scheduler.get_job(f"rem:{reminder.id}") is None
+            async with db.session() as session:
+                state = await ItemRepository(session).get_item_state(101, reminder.id)
+                assert state is not None
+                assert state.status == "pending"
+        finally:
+            await db.dispose()
+
+    asyncio.run(run())

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot
@@ -43,7 +43,7 @@ class ReminderScheduler:
 
     async def _reload_all(self) -> None:
         async with self._db.session() as session:
-            reminders = await ReminderRepository(session).all_active()
+            reminders = await ReminderRepository(session).all()
             users = UserRepository(session)
             active_count = 0
             extra_count = 0
@@ -93,8 +93,6 @@ class ReminderScheduler:
         self, reminder: Reminder, events: list[AdditionalEvent], timezone: str
     ) -> None:
         """Register durable extra events under the separate ``extra:`` namespace."""
-        if not reminder.active:
-            return
         for event in events:
             if not event.active:
                 continue
@@ -153,7 +151,12 @@ class ReminderScheduler:
         except Exception:  # noqa: BLE001
             logger.exception("Failed to deliver reminder %s", reminder_id)
         finally:
-            self.cancel(reminder_id)
+            # Recurring jobs own their next fire.  Only a one-off is consumed
+            # by this callback, and even that is retired below after the DB
+            # state has been checked.
+            schedule = Schedule.from_json(reminder.schedule_spec)
+            if schedule.kind == "once":
+                self.cancel(reminder_id)
 
         async with self._db.session() as session:
             repo = ReminderRepository(session)
@@ -162,8 +165,10 @@ class ReminderScheduler:
                 user_id, reminder_id
             )
             if current and current.schedule_kind == "once":
-                # Tasks remain pending after delivery; reminders retire naturally.
-                if not current_state or current_state.kind == "reminder":
+                # ``active`` is the primary alarm flag, not the item status.
+                # A delivered task remains pending but must not be scheduled
+                # again after restart.
+                if current_state is None or current_state.kind != "note":
                     await repo.deactivate(reminder_id)
                     await session.commit()
 
@@ -180,7 +185,6 @@ class ReminderScheduler:
                 or event.reminder_id != reminder_id
                 or event.user_id != user_id
                 or not event.active
-                or not reminder.active
                 or (state and state.status in {"completed", "deleted"})
                 or (state and state.kind == "note")
             ):
@@ -193,7 +197,7 @@ class ReminderScheduler:
             except Exception:  # noqa: BLE001
                 logger.exception("Failed to deliver extra event %s", event_id)
             event.active = False
-            event.fired_at = datetime.utcnow()
+            event.fired_at = datetime.now(UTC).replace(tzinfo=None)
             await session.commit()
             self._remove_extra_job(event_id)
 
@@ -203,6 +207,8 @@ class ReminderScheduler:
                 )
                 if not remaining and not self._scheduler.get_job(f"rem:{reminder_id}"):
                     reminder.active = False
+                    if state is not None:
+                        state.status = "retired"
                     await session.commit()
 
     def _remove_extra_job(self, event_id: int) -> None:

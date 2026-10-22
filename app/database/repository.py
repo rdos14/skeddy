@@ -22,6 +22,7 @@ from app.database.models import (
     User,
 )
 from app.nlp.dates import analyze_datetime, combine_pending_date
+from app.nlp.parser import parse
 from app.nlp.recurrence import Schedule
 
 
@@ -36,6 +37,9 @@ class UserRepository:
             self._session.add(user)
             await self._session.flush()
         return user
+
+    async def get(self, user_id: int) -> User | None:
+        return await self._session.get(User, user_id)
 
     async def set_timezone(self, user_id: int, timezone: str) -> None:
         user = await self._session.get(User, user_id)
@@ -87,6 +91,10 @@ class ReminderRepository:
         result = await self._session.scalars(
             select(Reminder).where(Reminder.active.is_(True))
         )
+        return list(result)
+
+    async def all(self) -> list[Reminder]:
+        result = await self._session.scalars(select(Reminder))
         return list(result)
 
     async def deactivate(self, reminder_id: int) -> None:
@@ -193,6 +201,11 @@ class ItemRepository:
         reminder = await self._owned(user_id, reminder_id)
         if reminder is None:
             return None
+        if (
+            await self.get_item_state(user_id, reminder_id) is None
+            and not reminder.active
+        ):
+            return None
         return reminder, await self._state_for(reminder)
 
     async def complete(
@@ -206,6 +219,8 @@ class ItemRepository:
         if pair is None:
             return None
         reminder, state = pair
+        if state.status == "deleted":
+            return None
         if state.status == "completed":
             return state
         state.status = "completed"
@@ -220,8 +235,6 @@ class ItemRepository:
             )
             .values(active=False)
         )
-        if scheduler is not None:
-            scheduler.cancel_all(reminder_id)
         await self._session.flush()
         return state
 
@@ -249,8 +262,6 @@ class ItemRepository:
             )
             .values(active=False)
         )
-        if scheduler is not None:
-            scheduler.cancel_all(reminder_id)
         await self._session.flush()
         return state
 
@@ -263,8 +274,8 @@ class ItemRepository:
         if pair is None:
             return None
         reminder, state = pair
-        if state.status == "completed":
-            return state
+        if state.status in {"completed", "deleted"}:
+            return None
         state.kind = kind
         if kind == "note":
             reminder.active = False
@@ -277,8 +288,19 @@ class ItemRepository:
                 )
                 .values(active=False)
             )
-        else:
-            reminder.active = True
+        await self._session.flush()
+        return state
+
+    async def reopen(self, user_id: int, reminder_id: int) -> ItemState | None:
+        """Make a completed item visible without reviving its old alarm."""
+        pair = await self._mutate(user_id, reminder_id)
+        if pair is None:
+            return None
+        _reminder, state = pair
+        if state.status != "completed":
+            return None
+        state.status = "pending"
+        state.completed_at = None
         await self._session.flush()
         return state
 
@@ -289,6 +311,8 @@ class ItemRepository:
         if reminder is None:
             return []
         state = await self.get_item_state(user_id, reminder_id)
+        if state is None and not reminder.active:
+            return []
         if state and state.status in {"completed", "deleted"}:
             return []
         created: list[AdditionalEvent] = []
@@ -323,12 +347,22 @@ class ItemRepository:
             query = query.where(AdditionalEvent.active.is_(True))
         return list(await self._session.scalars(query.order_by(AdditionalEvent.due_at)))
 
-    async def get_menu_draft(self, user_id: int) -> MenuDraft | None:
-        return await self._draft(user_id, None)
+    async def get_menu_draft(
+        self, user_id: int, *, now: datetime | None = None
+    ) -> MenuDraft | None:
+        return await self._draft(user_id, None, now=now)
 
     async def delete_menu_drafts(self, user_id: int) -> None:
         await self._session.execute(
             delete(MenuDraft).where(MenuDraft.user_id == user_id)
+        )
+
+    async def delete_pending_contexts(self, user_id: int) -> None:
+        await self._session.execute(
+            delete(PendingDraft).where(PendingDraft.user_id == user_id)
+        )
+        await self._session.execute(
+            delete(PendingBatch).where(PendingBatch.user_id == user_id)
         )
 
     async def begin_add_time(
@@ -340,6 +374,8 @@ class ItemRepository:
         _, state = pair
         if state.status == "completed":
             return AddTimeResult("reopen_required")
+        if state.status == "deleted":
+            return AddTimeResult("not_found")
         if state.kind == "note":
             return AddTimeResult("note_requires_type")
         draft = await self._session.scalar(
@@ -360,14 +396,22 @@ class ItemRepository:
             draft.target_date = None
             draft.expires_at = expires_at
         await self._session.flush()
+        await self.delete_pending_contexts(user_id)
+        await self._session.flush()
         return AddTimeResult("awaiting_input")
 
-    async def _draft(self, user_id: int, reminder_id: int | None) -> MenuDraft | None:
+    async def _draft(
+        self,
+        user_id: int,
+        reminder_id: int | None,
+        *,
+        now: datetime | None = None,
+    ) -> MenuDraft | None:
         query = select(MenuDraft).where(MenuDraft.user_id == user_id)
         if reminder_id is not None:
             query = query.where(MenuDraft.reminder_id == reminder_id)
         draft = await self._session.scalar(query)
-        if draft and draft.expires_at <= datetime.now():
+        if draft and draft.expires_at <= (now or datetime.now()):
             await self._session.delete(draft)
             await self._session.flush()
             return None
@@ -388,15 +432,36 @@ class ItemRepository:
             return AddTimeResult("not_found")
         state = await self.get_item_state(user_id, reminder_id)
         kind = state.kind if state else "reminder"
+        if state is None and not reminder.active:
+            return AddTimeResult("not_found")
         if state and state.status == "completed":
             return AddTimeResult("reopen_required")
         if state and state.status == "deleted":
             return AddTimeResult("not_found")
         if kind == "note":
             return AddTimeResult("note_requires_type")
+        parsed = parse(text, now=now)
+        if parsed is not None:
+            schedule = parsed.schedule
+            if (
+                schedule.kind == "once"
+                and schedule.run_date is not None
+                and parsed.message.strip().lower() == "reminder"
+            ):
+                return await self._add_due(
+                    user_id,
+                    reminder_id,
+                    schedule.run_date,
+                    scheduler=scheduler,
+                    timezone=timezone,
+                    now=now,
+                )
+            return AddTimeResult("invalid")
         analysis = analyze_datetime(text, now=now)
         if analysis.status == "missing_time" and analysis.target_date:
-            draft = await self._draft(user_id, reminder_id)
+            if analysis.message.strip().lower() != "reminder":
+                return AddTimeResult("invalid")
+            draft = await self._draft(user_id, reminder_id, now=now)
             if draft is None:
                 draft = MenuDraft(user_id=user_id, reminder_id=reminder_id)
                 self._session.add(draft)
@@ -408,7 +473,12 @@ class ItemRepository:
         if analysis.status != "complete" or analysis.due is None:
             return AddTimeResult("invalid")
         return await self._add_due(
-            user_id, reminder_id, analysis.due, scheduler=scheduler, timezone=timezone
+            user_id,
+            reminder_id,
+            analysis.due,
+            scheduler=scheduler,
+            timezone=timezone,
+            now=now,
         )
 
     addtime = add_time
@@ -430,7 +500,7 @@ class ItemRepository:
             return AddTimeResult("not_found")
         if state and state.kind == "note":
             return AddTimeResult("note_requires_type")
-        draft = await self._draft(user_id, reminder_id)
+        draft = await self._draft(user_id, reminder_id, now=now)
         if draft is None:
             return AddTimeResult("invalid")
         result = combine_pending_date(draft.target_date, text, now=now)
@@ -442,7 +512,12 @@ class ItemRepository:
         await self._session.delete(draft)
         await self._session.flush()
         return await self._add_due(
-            user_id, reminder_id, result.due, scheduler=scheduler, timezone=timezone
+            user_id,
+            reminder_id,
+            result.due,
+            scheduler=scheduler,
+            timezone=timezone,
+            now=now,
         )
 
     async def _add_due(
@@ -453,6 +528,7 @@ class ItemRepository:
         *,
         scheduler: ReminderScheduler,
         timezone: str,
+        now: datetime | None = None,
     ) -> AddTimeResult:
         existing = await self._session.scalar(
             select(AdditionalEvent).where(
@@ -462,15 +538,18 @@ class ItemRepository:
                 AdditionalEvent.active.is_(True),
             )
         )
-        events = await self.add_time_events(user_id, reminder_id, [due_at])
-        draft = await self._draft(user_id, reminder_id)
+        await self.add_time_events(user_id, reminder_id, [due_at])
+        draft = await self._draft(user_id, reminder_id, now=now)
         if draft is not None:
             await self._session.delete(draft)
             await self._session.flush()
         reminder = await self._owned(user_id, reminder_id)
         if reminder is None:
             return AddTimeResult("not_found")
-        scheduler.register_extras(reminder, events, timezone)
+        state = await self.get_item_state(user_id, reminder_id)
+        if state is not None and state.status == "retired":
+            state.status = "pending"
+            await self._session.flush()
         return AddTimeResult(
             "duplicate" if existing is not None else "added", due_at=due_at
         )

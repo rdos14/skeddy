@@ -19,6 +19,7 @@ class ItemCB(CallbackData, prefix="item"):
     item_id: int
     page: int = 0
     value: str = ""
+    context: str = ""
 
 
 def confirm_reminder(reminder_id: int) -> InlineKeyboardMarkup:
@@ -57,12 +58,16 @@ def item_list_keyboard(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for number, item in enumerate(items, 1):
-        builder.row(
-            InlineKeyboardButton(
-                text=str(number),
-                callback_data=ItemCB(action="open", item_id=item.id, page=page).pack(),
-            )
+        builder.button(
+            text=str(number),
+            callback_data=ItemCB(
+                action="open",
+                item_id=item.id,
+                page=page,
+                value="completed" if completed else "",
+            ).pack(),
         )
+    builder.adjust(5)
     builder.row(
         InlineKeyboardButton(
             text="Back to active" if completed else "Show completed",
@@ -103,39 +108,55 @@ def item_list_keyboard(
     return builder.as_markup()
 
 
-def item_detail_keyboard(item, *, page: int = 0) -> InlineKeyboardMarkup:
+def item_detail_keyboard(
+    item, *, page: int = 0, completed: bool = False
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    context = "completed" if completed else ""
     builder.row(
         InlineKeyboardButton(
-            text="✅ Complete",
-            callback_data=ItemCB(action="complete", item_id=item.id, page=page).pack(),
+            text="↩️ Reopen" if item.status == "completed" else "✅ Complete",
+            callback_data=ItemCB(
+                action="reopen" if item.status == "completed" else "complete",
+                item_id=item.id,
+                page=page,
+                value=context,
+            ).pack(),
         ),
         InlineKeyboardButton(
             text="➕ Add time",
-            callback_data=ItemCB(action="addtime", item_id=item.id, page=page).pack(),
+            callback_data=ItemCB(
+                action="addtime", item_id=item.id, page=page, value=context
+            ).pack(),
         ),
     )
     builder.row(
         InlineKeyboardButton(
             text="🔄 Change type",
-            callback_data=ItemCB(action="type", item_id=item.id, page=page).pack(),
+            callback_data=ItemCB(
+                action="type", item_id=item.id, page=page, value=context
+            ).pack(),
         ),
         InlineKeyboardButton(
             text="🗑 Delete",
-            callback_data=ItemCB(action="delete", item_id=item.id, page=page).pack(),
+            callback_data=ItemCB(
+                action="delete", item_id=item.id, page=page, value=context
+            ).pack(),
         ),
     )
     builder.row(
         InlineKeyboardButton(
             text="↩️ Back to list",
-            callback_data=ItemCB(action="back", item_id=0, page=page).pack(),
+            callback_data=ItemCB(
+                action="back", item_id=0, page=page, value=context
+            ).pack(),
         )
     )
     return builder.as_markup()
 
 
 def delete_confirmation_keyboard(
-    item_id: int, *, page: int = 0
+    item_id: int, *, page: int = 0, completed: bool = False
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -143,19 +164,23 @@ def delete_confirmation_keyboard(
             text="🗑 Delete",
             callback_data=ItemCB(
                 action="confirmdelete", item_id=item_id, page=page
+                , value="completed" if completed else ""
             ).pack(),
         ),
         InlineKeyboardButton(
             text="Cancel",
             callback_data=ItemCB(
                 action="canceldelete", item_id=item_id, page=page
+                , value="completed" if completed else ""
             ).pack(),
         ),
     )
     return builder.as_markup()
 
 
-def type_keyboard(item_id: int, *, page: int = 0) -> InlineKeyboardMarkup:
+def type_keyboard(
+    item_id: int, *, page: int = 0, completed: bool = False
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in (
         ("reminder", "Reminder"),
@@ -165,12 +190,40 @@ def type_keyboard(item_id: int, *, page: int = 0) -> InlineKeyboardMarkup:
         builder.button(
             text=label,
             callback_data=ItemCB(
-                action="settype", item_id=item_id, page=page, value=value
+                action="settype",
+                item_id=item_id,
+                page=page,
+                value=value,
+                context="completed" if completed else "",
             ).pack(),
         )
     builder.button(
         text="Cancel",
-        callback_data=ItemCB(action="back", item_id=item_id, page=page).pack(),
+        callback_data=ItemCB(
+            action="back",
+            item_id=item_id,
+            page=page,
+            value="completed" if completed else "",
+        ).pack(),
     )
     builder.adjust(3, 1)
+    return builder.as_markup()
+
+
+def legacy_delete_confirmation(reminder_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="🗑 Delete",
+            callback_data=ReminderCB(
+                action="confirmdelete", reminder_id=reminder_id
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="Cancel",
+            callback_data=ReminderCB(
+                action="canceldelete", reminder_id=reminder_id
+            ).pack(),
+        ),
+    )
     return builder.as_markup()

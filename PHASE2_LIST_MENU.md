@@ -45,9 +45,13 @@ await items.delete_menu_drafts(user_id)
 
 `AddTimeResult.status` puede ser `added`, `duplicate`, `missing_time`,
 `invalid`, `past`, `awaiting_input`, `note_requires_type`,
-`reopen_required` o `not_found`. El draft tiene TTL de 24 horas; `/cancel`
-lo elimina. Una fecha recibida sin reloj se conserva literalmente y se completa
-solo mediante `combine_pending_date`, sin crear job antes de la hora.
+`reopen_required` o `not_found`. El draft tiene TTL de 24 horas; `/cancel` y
+el botón/teclado `Cancel` eliminan todos los drafts de fase 1 y de menú. Una
+fecha recibida sin reloj se conserva literalmente y se completa solo mediante
+`combine_pending_date`, sin crear job antes de la hora. Add time acepta las
+expresiones temporales completas del parser de fase 1 (`today at 19`,
+`tomorrow at 9`, `in 5 minutes` y fechas numéricas), pero rechaza cualquier
+payload de título: no convierte texto pegado en un Reminder nuevo.
 
 El registro de jobs es explícito y separado del job primario:
 
@@ -59,9 +63,11 @@ await scheduler._reload_all()  # reconstruye primary y extra:* desde SQLite
 ```
 
 Jobs primarios usan `rem:<reminder_id>` y extras usan `extra:<event_id>`.
-`_fire` y `_fire_extra` vuelven a comprobar owner, status, tipo, `active` y
-`AdditionalEvent.active` antes de enviar; completar, borrar o convertir a Note
-invalida jobs antiguos. Las notificaciones no llevan keyboard ni IDs de item.
+`_fire` y `_fire_extra` vuelven a comprobar owner, status, tipo y
+`AdditionalEvent.active` antes de enviar. `Reminder.active` solo representa
+la alarma primaria; los extras pueden seguir activos cuando vale `False`.
+Completar, borrar o convertir a Note invalida jobs antiguos. Las
+notificaciones no llevan keyboard ni IDs de item.
 
 ## Handlers y callbacks
 
@@ -86,17 +92,24 @@ parseable; un ID inexistente o ajeno solo responde `not found`.
 
 ## Tipos
 
-- **Reminder:** una alarma one-shot se retira después de disparar; no se marca
-  completed automáticamente.
-- **Task:** permanece `pending` tras la entrega; el usuario debe Complete.
+- **Reminder:** una alarma one-shot se retira después de disparar. Su
+  `ItemState` comienza en `pending`; después del primary queda visible en
+  `pending` aunque `Reminder.active=False`. Si se añadieron extras, pasa a
+  `retired` únicamente cuando ya no quedan extras activos, y nunca pasa a
+  `completed` por una entrega.
+- **Task:** permanece `pending` tras la entrega y su primary queda inactivo
+  para impedir duplicados tras reinicio; el usuario debe Complete.
 - **Note:** no tiene notificaciones; convertir a Note cancela el primary y
   todos los extras. Convertir Note a Reminder/Task no inventa una hora futura;
   si no hay alarma activa, el detalle muestra `No active alarm` y Add time la
   añade explícitamente.
 
-Solo Complete escribe `status=completed`. `Reminder.active=False` de legacy
-puede significar entrega, borrado o fallo y nunca aparece en Show completed
-por inferencia.
+Los estados explícitos son `pending`, `completed`, `deleted` y `retired`.
+Solo Complete escribe `status=completed`; Reopen solo cambia
+`completed -> pending` y no reactiva horarios consumidos. `deleted` es final:
+las callbacks antiguas de Complete/Change type/Add time no lo reaniman.
+`Reminder.active=False` de legacy puede significar entrega, borrado o fallo y
+nunca aparece en Show completed por inferencia.
 
 ## Tablas aditivas
 

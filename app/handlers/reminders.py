@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+)
 
 from app.database.repository import (
     ItemMenuItem,
@@ -22,6 +28,7 @@ from app.keyboards.inline import (
     delete_confirmation_keyboard,
     item_detail_keyboard,
     item_list_keyboard,
+    legacy_delete_confirmation,
     type_keyboard,
 )
 from app.nlp import (
@@ -44,6 +51,7 @@ from app.services.scheduler import ReminderScheduler
 
 router = Router(name="reminders")
 PAGE_SIZE = 10
+_CONSUMED_MENU_INPUTS: dict[tuple[int, int], datetime] = {}
 
 
 async def _user_id(callback: CallbackQuery) -> int:
@@ -66,7 +74,7 @@ async def _list_text_and_markup(
             "You have no completed items."
             if completed
             else "You have no active reminders.",
-            None,
+            item_list_keyboard([], page=page, pages=1, completed=completed),
         )
     return render_item_list(rows, completed=completed), item_list_keyboard(
         rows, page=page, pages=pages, completed=completed
@@ -82,6 +90,8 @@ async def _owned_item(items: ItemRepository, user_id: int, item_id: int):
         if not reminder.active:
             return None
         return ItemMenuItem(reminder, kind="reminder", status="pending")
+    if state.status == "deleted":
+        return None
     return ItemMenuItem(reminder, kind=state.kind, status=state.status)
 
 
@@ -91,6 +101,8 @@ async def _edit_detail(
     user_id: int,
     item_id: int,
     page: int,
+    *,
+    completed: bool = False,
 ):
     item = await _owned_item(items, user_id, item_id)
     if item is None:
@@ -100,9 +112,31 @@ async def _edit_detail(
     extra_times = [event.due_at.strftime("%d/%m/%Y %H:%M") for event in extras]
     await callback.message.edit_text(
         render_item_detail(item, extra_times),
-        reply_markup=item_detail_keyboard(item, page=page),
+        reply_markup=item_detail_keyboard(item, page=page, completed=completed),
     )
     return True
+
+
+def _local_now(timezone: str) -> datetime:
+    return datetime.now(ZoneInfo(timezone)).replace(tzinfo=None)
+
+
+async def _commit(items: ItemRepository) -> None:
+    await items._session.commit()
+
+
+async def _show_list_after(
+    callback: CallbackQuery,
+    items: ItemRepository,
+    user_id: int,
+    page: int,
+    *,
+    completed: bool = False,
+) -> None:
+    text, markup = await _list_text_and_markup(
+        items, user_id, page=page, completed=completed
+    )
+    await callback.message.edit_text(text, reply_markup=markup)
 
 
 @router.message(Command("cancel"))
@@ -200,10 +234,16 @@ async def show_item_detail(
     callback: CallbackQuery, callback_data: ItemCB, items: ItemRepository
 ):
     user_id = await _user_id(callback)
-    await callback.answer()
-    await _edit_detail(
-        callback, items, user_id, callback_data.item_id, callback_data.page
+    found = await _edit_detail(
+        callback,
+        items,
+        user_id,
+        callback_data.item_id,
+        callback_data.page,
+        completed=callback_data.value == "completed",
     )
+    if found:
+        await callback.answer()
 
 
 @router.callback_query(ItemCB.filter(F.action == "back"))
@@ -211,7 +251,10 @@ async def back_to_list(
     callback: CallbackQuery, callback_data: ItemCB, items: ItemRepository
 ):
     user_id = await _user_id(callback)
-    text, markup = await _list_text_and_markup(items, user_id, page=callback_data.page)
+    completed = callback_data.value == "completed"
+    text, markup = await _list_text_and_markup(
+        items, user_id, page=callback_data.page, completed=completed
+    )
     await callback.answer()
     await callback.message.edit_text(text, reply_markup=markup)
 
@@ -230,9 +273,46 @@ async def complete_item(
     if state is None:
         await callback.answer("Item not found or not yours.")
         return
+    if state.status == "completed":
+        await callback.answer("Item is already completed.")
+        await _show_list_after(
+            callback,
+            items,
+            user_id,
+            callback_data.page,
+            completed=callback_data.value == "completed",
+        )
+        return
+    await _commit(items)
     scheduler.cancel_all(callback_data.item_id)
     await callback.answer("Completed ✅")
-    await callback.message.edit_text("✅ Item completed. All alarms cancelled.")
+    await _show_list_after(
+        callback, items, user_id, callback_data.page,
+        completed=callback_data.value == "completed",
+    )
+
+
+@router.callback_query(ItemCB.filter(F.action == "reopen"))
+async def reopen_item(
+    callback: CallbackQuery,
+    callback_data: ItemCB,
+    items: ItemRepository,
+):
+    user_id = await _user_id(callback)
+    state = await items.reopen(user_id, callback_data.item_id)
+    if state is None:
+        await callback.answer("Item not found, deleted, or already open.")
+        return
+    await _commit(items)
+    await callback.answer("Reopened. Add a new time if needed.")
+    await _edit_detail(
+        callback,
+        items,
+        user_id,
+        callback_data.item_id,
+        callback_data.page,
+        completed=callback_data.value == "completed",
+    )
 
 
 @router.callback_query(ItemCB.filter(F.action == "delete"))
@@ -261,7 +341,9 @@ async def delete_item(
     await callback.message.edit_text(
         f"Delete <b>{visual_text(item.message)}</b>? "
         "This cannot be undone from the menu.",
-        reply_markup=delete_confirmation_keyboard(item_id, page=page),
+        reply_markup=delete_confirmation_keyboard(
+            item_id, page=page, completed=item.status == "completed"
+        ),
     )
 
 
@@ -279,9 +361,23 @@ async def confirm_delete_item(
     if state is None:
         await callback.answer("Item not found or not yours.")
         return
+    if state.status == "deleted":
+        await callback.answer("Item was already deleted.")
+        await _show_list_after(
+            callback,
+            items,
+            user_id,
+            callback_data.page,
+            completed=callback_data.value == "completed",
+        )
+        return
+    await _commit(items)
     scheduler.cancel_all(callback_data.item_id)
     await callback.answer("Deleted ✅")
-    await callback.message.edit_text("🗑 Item deleted. Historical data is retained.")
+    await _show_list_after(
+        callback, items, user_id, callback_data.page,
+        completed=callback_data.value == "completed",
+    )
 
 
 @router.callback_query(ItemCB.filter(F.action == "canceldelete"))
@@ -289,18 +385,35 @@ async def cancel_delete_item(
     callback: CallbackQuery, callback_data: ItemCB, items: ItemRepository
 ):
     user_id = await _user_id(callback)
-    await callback.answer("Delete cancelled.")
-    await _edit_detail(
-        callback, items, user_id, callback_data.item_id, callback_data.page
+    found = await _edit_detail(
+        callback,
+        items,
+        user_id,
+        callback_data.item_id,
+        callback_data.page,
+        completed=callback_data.value == "completed",
+    )
+    await callback.answer(
+        "Delete cancelled." if found else "Item not found or not yours."
     )
 
 
 @router.callback_query(ItemCB.filter(F.action == "type"))
-async def change_item_type(callback: CallbackQuery, callback_data: ItemCB):
+async def change_item_type(
+    callback: CallbackQuery, callback_data: ItemCB, items: ItemRepository
+):
+    user_id = await _user_id(callback)
+    if await _owned_item(items, user_id, callback_data.item_id) is None:
+        await callback.answer("Item not found or not yours.")
+        return
     await callback.answer()
     await callback.message.edit_text(
         "Choose the item type:",
-        reply_markup=type_keyboard(callback_data.item_id, page=callback_data.page),
+        reply_markup=type_keyboard(
+            callback_data.item_id,
+            page=callback_data.page,
+            completed=callback_data.value == "completed",
+        ),
     )
 
 
@@ -314,11 +427,15 @@ async def set_item_type(
     default_tz: str = "UTC",
 ):
     user_id = await _user_id(callback)
+    if callback_data.value not in items.VALID_KINDS:
+        await callback.answer("Invalid item type.")
+        return
     state = await items.change_type(user_id, callback_data.item_id, callback_data.value)
     if state is None:
         await callback.answer("Item not found or not yours.")
         return
     if callback_data.value == "note":
+        await _commit(items)
         scheduler.cancel_all(callback_data.item_id)
         message = "Type changed to Note. All notifications are cancelled."
     else:
@@ -326,13 +443,21 @@ async def set_item_type(
         if reminder is not None:
             timezone = default_tz
             if users is not None:
-                user = await users.get_or_create(user_id, default_tz)
-                timezone = user.timezone
-            scheduler.register(reminder, timezone)
+                user = await users.get(user_id)
+                if user is not None:
+                    timezone = user.timezone
+            await _commit(items)
+            if reminder.active:
+                scheduler.register(reminder, timezone)
         message = f"Type changed to {callback_data.value.title()}."
     await callback.answer(message)
     await _edit_detail(
-        callback, items, user_id, callback_data.item_id, callback_data.page
+        callback,
+        items,
+        user_id,
+        callback_data.item_id,
+        callback_data.page,
+        completed=callback_data.context == "completed",
     )
 
 
@@ -341,11 +466,19 @@ async def add_time_item(
     callback: CallbackQuery,
     callback_data: ItemCB,
     items: ItemRepository,
+    users: UserRepository | None = None,
+    default_tz: str = "UTC",
 ):
+    user_id = await _user_id(callback)
+    timezone = default_tz
+    if users is not None:
+        user = await users.get(user_id)
+        if user is not None:
+            timezone = user.timezone
     result = await items.begin_add_time(
-        await _user_id(callback),
+        user_id,
         callback_data.item_id,
-        expires_at=datetime.now() + timedelta(hours=24),
+        expires_at=_local_now(timezone) + timedelta(hours=24),
     )
     await callback.answer()
     prompts = {
@@ -359,7 +492,14 @@ async def add_time_item(
         "reopen_required": "Reopen this completed item before adding time.",
         "not_found": "Item not found or not yours.",
     }
-    await callback.message.answer(prompts.get(result.status, "No alarm was added."))
+    await callback.message.answer(
+        prompts.get(result.status, "No alarm was added."),
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Cancel")]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
 
 
 @router.callback_query(ReminderCB.filter(F.action == "delete"))
@@ -376,10 +516,45 @@ async def delete_reminder(
     if reminder is None or reminder.user_id != user_id:
         await callback.answer("Item not found or not yours.")
         return
-    await reminders.deactivate(callback_data.reminder_id)
-    scheduler.cancel_all(callback_data.reminder_id)
+    await callback.answer("Deleted? Confirmation required.")
+    await callback.message.edit_text(
+        f"Reminder deleted? Confirm to remove <b>{visual_text(reminder.message)}</b>.",
+        reply_markup=legacy_delete_confirmation(reminder.id),
+    )
+
+
+@router.callback_query(ReminderCB.filter(F.action == "confirmdelete"))
+async def confirm_delete_reminder(
+    callback: CallbackQuery,
+    callback_data: ReminderCB,
+    reminders: ReminderRepository,
+    scheduler: ReminderScheduler,
+):
+    user_id = await _user_id(callback)
+    reminder = await reminders.get(callback_data.reminder_id)
+    if reminder is None or reminder.user_id != user_id:
+        await callback.answer("Item not found or not yours.")
+        return
+    await reminders.deactivate(reminder.id)
+    await reminders._session.commit()
+    scheduler.cancel_all(reminder.id)
     await callback.answer("Deleted ✅")
     await callback.message.edit_text("🗑 Reminder deleted.")
+
+
+@router.callback_query(ReminderCB.filter(F.action == "canceldelete"))
+async def cancel_delete_reminder(
+    callback: CallbackQuery,
+    callback_data: ReminderCB,
+    reminders: ReminderRepository,
+):
+    user_id = await _user_id(callback)
+    reminder = await reminders.get(callback_data.reminder_id)
+    if reminder is None or reminder.user_id != user_id:
+        await callback.answer("Item not found or not yours.")
+        return
+    await callback.answer("Delete cancelled.")
+    await callback.message.edit_text("Delete cancelled.")
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -393,10 +568,29 @@ async def create_reminder(
     pending_batches: PendingBatchRepository | None = None,
     items: ItemRepository | None = None,
 ) -> None:
-    now = datetime.now()
+    if message.text.strip().casefold() == "cancel":
+        if pending is not None:
+            await pending.delete(message.chat.id)
+        if pending_batches is not None:
+            await pending_batches.delete(message.chat.id)
+        if items is not None:
+            await items.delete_menu_drafts(message.chat.id)
+        await message.answer(
+            "Pending input cancelled. No reminder or alarm was created."
+        )
+        return
+    owner = await users.get(message.chat.id)
+    now = _local_now(owner.timezone if owner is not None else default_tz)
+    message_id = getattr(message, "message_id", None)
+    if message_id is not None:
+        cutoff = now - timedelta(hours=24)
+        for key, seen_at in list(_CONSUMED_MENU_INPUTS.items()):
+            if seen_at <= cutoff:
+                _CONSUMED_MENU_INPUTS.pop(key, None)
     if items is not None:
-        menu_draft = await items.get_menu_draft(message.chat.id)
+        menu_draft = await items.get_menu_draft(message.chat.id, now=now)
         if menu_draft is not None:
+            menu_timezone = owner.timezone if owner is not None else default_tz
             if menu_draft.target_date is None:
                 result = await items.add_time(
                     message.chat.id,
@@ -404,7 +598,7 @@ async def create_reminder(
                     message.text,
                     now=now,
                     scheduler=scheduler,
-                    timezone=default_tz,
+                    timezone=menu_timezone,
                 )
             else:
                 result = await items.add_time_clock(
@@ -413,7 +607,7 @@ async def create_reminder(
                     message.text,
                     now=now,
                     scheduler=scheduler,
-                    timezone=default_tz,
+                    timezone=menu_timezone,
                 )
             if result.status == "missing_time":
                 await message.answer(
@@ -421,12 +615,34 @@ async def create_reminder(
                     "Send one clock such as <code>9:00 AM</code>, or /cancel."
                 )
             elif result.status == "added":
+                await _commit(items)
+                reminder = await items._owned(
+                    message.chat.id, menu_draft.reminder_id
+                )
+                if reminder is not None:
+                    events = await items.extra_events(
+                        message.chat.id, menu_draft.reminder_id
+                    )
+                    scheduler.register_extras(reminder, events, menu_timezone)
+                if message_id is not None:
+                    _CONSUMED_MENU_INPUTS[(message.chat.id, message_id)] = now
                 await message.answer(
                     f"✅ Alarm added to this item at "
                     f"{result.due_at:%d/%m/%Y %H:%M}. "
                     "The original alarm was preserved."
                 )
             elif result.status == "duplicate":
+                await _commit(items)
+                reminder = await items._owned(
+                    message.chat.id, menu_draft.reminder_id
+                )
+                if reminder is not None:
+                    events = await items.extra_events(
+                        message.chat.id, menu_draft.reminder_id
+                    )
+                    scheduler.register_extras(reminder, events, menu_timezone)
+                if message_id is not None:
+                    _CONSUMED_MENU_INPUTS[(message.chat.id, message_id)] = now
                 await message.answer(
                     "That alarm is already present; no duplicate was created."
                 )
@@ -439,6 +655,15 @@ async def create_reminder(
                     "No alarm was added. Use DD/MM/YYYY HH:MM or /cancel."
                 )
             return
+
+    if message_id is not None and (
+        message.chat.id,
+        message_id,
+    ) in _CONSUMED_MENU_INPUTS:
+        await message.answer(
+            "This input was already processed; no new reminder was created."
+        )
+        return
 
     # A numbered paste is a new batch, not a clock reply for an older draft.
     if pending_batches is not None and is_batch_input(message.text):

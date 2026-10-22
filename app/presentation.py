@@ -57,6 +57,12 @@ def visual_text(value: str, limit: int = 240) -> str:
 
 
 def item_schedule(item: ItemMenuItem) -> str:
+    if (
+        getattr(item, "kind", "reminder") == "note"
+        or getattr(item, "status", "pending") in {"completed", "retired"}
+        or not getattr(item, "active", True)
+    ):
+        return "No active alarm"
     try:
         schedule = Schedule.from_json(item.schedule_spec)
         return format_schedule(schedule)
@@ -80,12 +86,9 @@ def render_item_list(items: list[ItemMenuItem], *, completed: bool = False) -> s
     heading = "<b>Completed items:</b>" if completed else "<b>Active reminders:</b>"
     lines = [heading, "", "Choose a number to open"]
     for number, item in enumerate(items, 1):
-        lines.extend(
-            [
-                f"<b>{number}.</b> {visual_text(item.message)}",
-                f"   🕒 {html.escape(item_schedule(item), quote=False)}",
-            ]
-        )
+        title = visual_text(item.message, limit=60)
+        schedule = html.escape(item_schedule(item), quote=False)
+        lines.append(f"<b>{number}.</b> {title} · 🕒 {schedule}")
     return _bounded_lines(lines)
 
 
@@ -111,6 +114,11 @@ def render_item_detail(item: ItemMenuItem, extra_times: list[str] | None = None)
     if extra_times:
         lines.append(
             "Additional times: "
-            + ", ".join(html.escape(value) for value in extra_times)
+            + ", ".join(html.escape(value) for value in extra_times[:8])
+            + (
+                f" (+{len(extra_times) - 8} more)"
+                if len(extra_times) > 8
+                else ""
+            )
         )
     return _bounded_lines(lines)
